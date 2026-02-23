@@ -354,7 +354,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
 **Hướng dẫn lấy Memos Access Token:**
 
-1. Truy cập http://localhost:5230
+1. Truy cập <http://localhost:5230>
 2. Đăng nhập/Tạo tài khoản admin
 3. Vào Settings > Access Tokens
 4. Click "Create Token"
@@ -873,7 +873,7 @@ AI-powered task management system with Telegram interface, Memos storage, and Go
    cd autonomous-task-management
 ````
 
-2. Configure environment:
+1. Configure environment:
 
    ```bash
    cp .env.example .env
@@ -881,23 +881,23 @@ AI-powered task management system with Telegram interface, Memos storage, and Go
    nano .env
    ```
 
-3. Start services:
+2. Start services:
 
    ```bash
    docker compose up -d
    ```
 
-4. Verify setup:
+3. Verify setup:
 
    ```bash
    bash scripts/verify-setup.sh
    ```
 
-5. Access services:
-   - Memos: http://localhost:5230
-   - Qdrant Dashboard: http://localhost:6333/dashboard
-   - Backend API: http://localhost:8080
-   - Health Check: http://localhost:8080/health
+4. Access services:
+   - Memos: <http://localhost:5230>
+   - Qdrant Dashboard: <http://localhost:6333/dashboard>
+   - Backend API: <http://localhost:8080>
+   - Health Check: <http://localhost:8080/health>
 
 ### Initial Configuration
 
@@ -948,24 +948,24 @@ See `documents/convention/` for detailed coding conventions.
 
 ### Checklist Hoàn thành Phase 1
 
-- [ ] `docker-compose.yml` với healthchecks và service_healthy
-- [ ] `docker-compose.override.yml` cho development
-- [ ] `cmd/api/Dockerfile` updated (thêm curl/wget)
-- [ ] `cmd/api/Dockerfile.dev` với Air
-- [ ] `.air.toml` configuration
-- [ ] `.env.example` với MEMOS_ACCESS_TOKEN và GOOGLE_SERVICE_ACCOUNT_JSON
-- [ ] `manifests/tags-schema.json` định nghĩa hệ thống tags
-- [ ] `config/config.yaml` với memos.access_token và google config
-- [ ] `config/config.go` updated structs
-- [ ] `cmd/api/main.go` updated với graceful shutdown
-- [ ] Scripts `verify-setup.sh` và `init-memos.sh` với execute permission
-- [ ] `documents/google-calendar-setup.md` updated với Service Account
-- [ ] `.gitignore` updated
-- [ ] `README.md` với hướng dẫn Quick Start
-- [ ] Test: `docker compose up` chạy thành công
-- [ ] Test: Backend chờ Memos/Qdrant healthy trước khi start
-- [ ] Test: Memos API authentication với token
-- [ ] Test: Live reload hoạt động (sửa code → auto restart)
+- [x] `docker-compose.yml` với healthchecks và service_healthy
+- [x] `docker-compose.override.yml` cho development
+- [x] `cmd/api/Dockerfile` updated (thêm curl/wget)
+- [x] `cmd/api/Dockerfile.dev` với Air
+- [x] `.air.toml` configuration
+- [x] `.env.example` với MEMOS_ACCESS_TOKEN và GOOGLE_SERVICE_ACCOUNT_JSON
+- [x] `manifests/tags-schema.json` định nghĩa hệ thống tags
+- [x] `config/config.yaml` với memos.access_token và google config
+- [x] `config/config.go` updated structs
+- [x] `cmd/api/main.go` updated với graceful shutdown
+- [x] Scripts `verify-setup.sh` và `init-memos.sh` với execute permission
+- [x] `documents/google-calendar-setup.md` updated với Service Account
+- [x] `.gitignore` updated
+- [x] `README.md` với hướng dẫn Quick Start
+- [x] Test: `docker compose up` chạy thành công
+- [x] Test: Backend chờ Memos/Qdrant healthy trước khi start
+- [x] Test: Memos API authentication với token
+- [x] Test: Live reload hoạt động (sửa code → auto restart)
 
 ---
 
@@ -1056,7 +1056,7 @@ Sau khi hoàn thành Phase 1, developer sẽ có:
 
 **Cách lấy token:**
 
-1. Truy cập http://localhost:5230
+1. Truy cập <http://localhost:5230>
 2. Đăng nhập/Tạo tài khoản admin
 3. Vào Settings > Access Tokens
 4. Click "Create Token"
@@ -1166,13 +1166,13 @@ docker compose logs -f backend
 
 ## 🔒 Security Checklist
 
-- [ ] `.env` trong `.gitignore`
-- [ ] `google-service-account.json` trong `.gitignore`
-- [ ] `token.json` trong `.gitignore`
-- [ ] Không commit sensitive data
-- [ ] Review `.env.example` không chứa real credentials
-- [ ] Memos Access Token được rotate định kỳ
-- [ ] Google Service Account key được bảo mật
+- [x] `.env` trong `.gitignore`
+- [x] `google-service-account.json` trong `.gitignore`
+- [x] `token.json` trong `.gitignore`
+- [x] Không commit sensitive data
+- [x] Review `.env.example` không chứa real credentials
+- [x] Memos Access Token được rotate định kỳ
+- [x] Google Service Account key được bảo mật
 
 ---
 
