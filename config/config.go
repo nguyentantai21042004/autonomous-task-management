@@ -37,6 +37,7 @@ type Config struct {
 	Qdrant         QdrantConfig
 	Telegram       TelegramConfig
 	GoogleCalendar GoogleCalendarConfig
+	Gemini         GeminiConfig
 }
 
 type EnvironmentConfig struct {
@@ -123,6 +124,11 @@ type TelegramConfig struct {
 type GoogleCalendarConfig struct {
 	CredentialsPath string
 	CalendarID      string
+}
+
+type GeminiConfig struct {
+	APIKey   string
+	Timezone string // IANA timezone, e.g. "Asia/Ho_Chi_Minh"
 }
 
 // Load loads configuration using Viper.
@@ -217,8 +223,18 @@ func Load() (*Config, error) {
 
 	cfg.GoogleCalendar.CredentialsPath = viper.GetString("google_calendar.credentials_path")
 	cfg.GoogleCalendar.CalendarID = viper.GetString("google_calendar.calendar_id")
-	if googleCreds := viper.GetString("google_service_account_json"); googleCreds != "" {
+	if googleCreds := viper.GetString("google_calendar_credentials"); googleCreds != "" {
 		cfg.GoogleCalendar.CredentialsPath = googleCreds
+	}
+
+	// Gemini LLM
+	cfg.Gemini.APIKey = viper.GetString("gemini.api_key")
+	cfg.Gemini.Timezone = viper.GetString("gemini.timezone")
+	if apiKey := viper.GetString("gemini_api_key"); apiKey != "" {
+		cfg.Gemini.APIKey = apiKey
+	}
+	if tz := viper.GetString("gemini_timezone"); tz != "" {
+		cfg.Gemini.Timezone = tz
 	}
 
 	if err := validate(cfg); err != nil {
@@ -259,6 +275,7 @@ func setDefaults() {
 	viper.SetDefault("cookie.max_age", 28800)
 	viper.SetDefault("cookie.max_age_remember", 604800)
 	viper.SetDefault("cookie.name", "auth_token")
+	viper.SetDefault("gemini.timezone", "Asia/Ho_Chi_Minh")
 }
 
 func validate(cfg *Config) error {

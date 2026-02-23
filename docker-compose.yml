@@ -60,13 +60,33 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - GOOGLE_CALENDAR_CREDENTIALS=${GOOGLE_CALENDAR_CREDENTIALS}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_TIMEZONE=${GEMINI_TIMEZONE:-Asia/Ho_Chi_Minh}
+      # Ngrok URL will be auto-detected at runtime via http://ngrok:4040/api/tunnels
+      # No need to set TELEGRAM_WEBHOOK_URL manually
     volumes:
       - ./config/config.yaml:/app/config/config.yaml:ro
+      - ./${GOOGLE_CALENDAR_CREDENTIALS:-google-credentials.json}:/app/google-credentials.json:ro
+      - ./token.json:/app/token.json:ro
     depends_on:
       memos:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+    networks:
+      - atm-network
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: atm-ngrok
+    command: http backend:8080 --log=stdout
+    ports:
+      - "4040:4040" # ngrok local API — visit http://localhost:4040 to inspect traffic
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    depends_on:
+      - backend
     networks:
       - atm-network
     restart: unless-stopped

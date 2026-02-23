@@ -30,7 +30,7 @@ func (srv HTTPServer) healthCheck(c *gin.Context) {
 	})
 }
 
-// readyCheck handles readiness check requests (Postgres + Redis).
+// readyCheck handles readiness check — returns ready if server is up.
 // @Summary Readiness Check
 // @Description Check if the API is ready to serve traffic
 // @Tags Health
@@ -39,30 +39,11 @@ func (srv HTTPServer) healthCheck(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "API is ready"
 // @Router /ready [get]
 func (srv HTTPServer) readyCheck(c *gin.Context) {
-	ctx := c.Request.Context()
-	if err := srv.postgresDB.PingContext(ctx); err != nil {
-		c.JSON(503, gin.H{
-			"status":  "not ready",
-			"message": "Database connection failed",
-			"error":   err.Error(),
-		})
-		return
-	}
-	if err := srv.redisClient.Ping(ctx); err != nil {
-		c.JSON(503, gin.H{
-			"status":  "not ready",
-			"message": "Redis connection failed",
-			"error":   err.Error(),
-		})
-		return
-	}
 	response.OK(c, gin.H{
-		"status":   "ready",
-		"message":  HealthMessage,
-		"version":  HealthVersion,
-		"service":  ServiceName,
-		"database": "connected",
-		"redis":    "connected",
+		"status":  "ready",
+		"message": HealthMessage,
+		"version": HealthVersion,
+		"service": ServiceName,
 	})
 }
 

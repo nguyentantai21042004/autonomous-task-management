@@ -8,27 +8,23 @@ import (
 	"syscall"
 
 	"autonomous-task-management/config"
-	"autonomous-task-management/config/kafka"
-	"autonomous-task-management/config/postgre"
-	"autonomous-task-management/config/redis"
 	_ "autonomous-task-management/docs" // Swagger docs
 	"autonomous-task-management/internal/httpserver"
-	"autonomous-task-management/pkg/discord"
-	"autonomous-task-management/pkg/encrypter"
-	"autonomous-task-management/pkg/jwt"
+	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
+	memosRepo "autonomous-task-management/internal/task/repository/memos"
+	"autonomous-task-management/internal/task/usecase"
+	"autonomous-task-management/pkg/datemath"
+	"autonomous-task-management/pkg/gcalendar"
+	"autonomous-task-management/pkg/gemini"
 	"autonomous-task-management/pkg/log"
+	"autonomous-task-management/pkg/telegram"
 )
 
-// @title       Golang Boilerplate API
-// @description Generic Go service boilerplate. Replace this with your service description.
+// @title       Autonomous Task Management API
+// @description AI-powered task management with Telegram, Gemini LLM, Memos, and Google Calendar.
 // @version     1
 // @host        localhost:8080
 // @schemes     http
-//
-// @securityDefinitions.apikey Bearer
-// @in header
-// @name Authorization
-// @description Bearer token authentication. Format: "Bearer {token}"
 func main() {
 	// 1. Configuration
 	cfg, err := config.Load()
@@ -48,82 +44,94 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	logger.Info(ctx, "Starting service...")
+	logger.Info(ctx, "Starting Autonomous Task Management...")
 	logger.Infof(ctx, "Environment: %s", cfg.Environment.Name)
 	logger.Infof(ctx, "Memos URL: %s", cfg.Memos.URL)
-	logger.Infof(ctx, "Qdrant URL: %s", cfg.Qdrant.URL)
 
-	// 3. Infrastructure
-	encrypterInstance := encrypter.New(cfg.Encrypter.Key)
+	// 3. Phase 2: Task domain
+	var telegramHandler tgDelivery.Handler
 
-	postgresDB, err := postgre.Connect(ctx, cfg.Postgres)
-	if err != nil {
-		logger.Warnf(ctx, "Failed to connect to PostgreSQL (optional): %v", err)
-		postgresDB = nil
+	if cfg.Telegram.BotToken != "" && cfg.Gemini.APIKey != "" && cfg.Memos.AccessToken != "" {
+		logger.Info(ctx, "Initializing Phase 2 components...")
+
+		// Telegram Bot client
+		telegramBot := telegram.NewBot(cfg.Telegram.BotToken)
+
+		// Gemini LLM client
+		geminiClient := gemini.NewClient(cfg.Gemini.APIKey)
+
+		// DateMath parser
+		timezone := cfg.Gemini.Timezone
+		if timezone == "" {
+			timezone = "Asia/Ho_Chi_Minh"
+		}
+		dateMathParser, dtErr := datemath.NewParser(timezone)
+		if dtErr != nil {
+			logger.Warnf(ctx, "Invalid timezone %q, falling back to UTC: %v", timezone, dtErr)
+			dateMathParser, _ = datemath.NewParser("UTC")
+		}
+
+		// Memos repository
+		memosClient := memosRepo.NewClient(cfg.Memos.URL, cfg.Memos.AccessToken)
+		taskRepo := memosRepo.New(memosClient, cfg.Memos.URL, logger)
+
+		// Google Calendar client (optional)
+		var calendarClient *gcalendar.Client
+		if cfg.GoogleCalendar.CredentialsPath != "" {
+			calendarClient, err = gcalendar.NewClientFromCredentialsFile(ctx, cfg.GoogleCalendar.CredentialsPath)
+			if err != nil {
+				logger.Warnf(ctx, "Google Calendar not available (optional): %v", err)
+				logger.Warn(ctx, "→ Run `go run scripts/gcal-auth/main.go` to generate token.json")
+			} else {
+				logger.Info(ctx, "✅ Google Calendar initialized")
+			}
+		}
+
+		// Task UseCase
+		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, dateMathParser, timezone, cfg.Memos.URL)
+
+		// Telegram Delivery handler
+		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot)
+
+		// Register webhook: auto-detect ngrok or fallback to manual config
+		webhookURL := cfg.Telegram.WebhookURL
+		if webhookURL == "" {
+			ngrokURL, ngrokErr := detectNgrokURL(ctx, "http://ngrok:4040")
+			if ngrokErr != nil {
+				logger.Warnf(ctx, "Could not detect ngrok URL: %v", ngrokErr)
+			} else {
+				webhookURL = ngrokURL + "/webhook/telegram"
+				logger.Infof(ctx, "Auto-detected ngrok URL: %s", webhookURL)
+			}
+		}
+
+		if webhookURL != "" {
+			if whErr := telegramBot.SetWebhook(webhookURL); whErr != nil {
+				logger.Warnf(ctx, "Failed to set Telegram webhook: %v", whErr)
+			} else {
+				logger.Infof(ctx, "✅ Telegram webhook registered at %s", webhookURL)
+			}
+		}
+
+		logger.Info(ctx, "Phase 2 initialized successfully")
 	} else {
-		defer postgre.Disconnect(ctx, postgresDB)
-		logger.Info(ctx, "PostgreSQL connected")
+		logger.Warn(ctx, "Phase 2 skipped: TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, or MEMOS_ACCESS_TOKEN is missing")
 	}
 
-	redisClient, err := redis.Connect(ctx, cfg.Redis)
-	if err != nil {
-		logger.Warnf(ctx, "Failed to connect to Redis (optional): %v", err)
-		redisClient = nil
-	} else {
-		defer redis.Disconnect()
-		logger.Info(ctx, "Redis connected")
-	}
-
-	// 4. Optional: Kafka producer
-	kafkaProducer, err := kafka.ConnectProducer(cfg.Kafka)
-	if err != nil {
-		logger.Warnf(ctx, "Kafka not configured or unavailable (optional): %v", err)
-		kafkaProducer = nil
-	} else {
-		defer kafka.DisconnectProducer()
-		logger.Info(ctx, "Kafka producer connected")
-	}
-	// Kafka producer is available as kafkaProducer if needed
-	_ = kafkaProducer
-
-	// 5. Utilities
-	discordClient, err := discord.New(logger, cfg.Discord.WebhookURL)
-	if err != nil {
-		logger.Warnf(ctx, "Discord webhook not configured (optional): %v", err)
-		discordClient = nil
-	} else {
-		logger.Info(ctx, "Discord client initialized")
-	}
-
-	jwtManager, err := jwt.New(jwt.Config{SecretKey: cfg.JWT.SecretKey})
-	if err != nil {
-		logger.Error(ctx, "Failed to initialize JWT manager: ", err)
-		return
-	}
-
-	// 6. HTTP Server (wires all domains internally)
+	// 4. HTTP Server
 	httpServer, err := httpserver.New(logger, httpserver.Config{
-		Logger:      logger,
-		Port:        cfg.HTTPServer.Port,
-		Mode:        cfg.HTTPServer.Mode,
-		Environment: cfg.Environment.Name,
-
-		PostgresDB: postgresDB,
-
-		Config:       cfg,
-		JWTManager:   jwtManager,
-		RedisClient:  redisClient,
-		CookieConfig: cfg.Cookie,
-		Encrypter:    encrypterInstance,
-
-		Discord: discordClient,
+		Logger:          logger,
+		Port:            cfg.HTTPServer.Port,
+		Mode:            cfg.HTTPServer.Mode,
+		Environment:     cfg.Environment.Name,
+		TelegramHandler: telegramHandler,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize HTTP server: ", err)
 		return
 	}
 
-	// 7. Run
+	// 5. Run
 	if err := httpServer.Run(); err != nil {
 		logger.Error(ctx, "Failed to run server: ", err)
 		return

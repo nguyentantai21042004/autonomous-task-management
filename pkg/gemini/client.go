@@ -23,7 +23,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		apiKey:     apiKey,
-		apiURL:     "https://generativelanguage.googleapis.com/v1beta",
+		apiURL:     "https://generativelanguage.googleapis.com/v1",
 		model:      defaultModel,
 		httpClient: &http.Client{},
 	}

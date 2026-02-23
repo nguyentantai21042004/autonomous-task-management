@@ -3,31 +3,27 @@ package httpserver
 import (
 	"context"
 
-	"autonomous-task-management/internal/middleware"
 	"autonomous-task-management/internal/model"
 
+	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func (srv HTTPServer) mapHandlers() error {
-	mw := middleware.New(srv.l, srv.jwtManager, srv.cookieConfig, srv.config.InternalConfig.InternalKey, srv.config, srv.encrypter)
-
-	srv.registerMiddlewares(mw)
+	srv.registerMiddlewares()
 	srv.registerSystemRoutes()
 
-	if err := srv.registerDomainRoutes(mw); err != nil {
+	if err := srv.registerDomainRoutes(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (srv HTTPServer) registerMiddlewares(mw middleware.Middleware) {
-	srv.gin.Use(middleware.Recovery(srv.l, srv.discord))
-
-	corsConfig := middleware.DefaultCORSConfig(srv.environment)
-	srv.gin.Use(middleware.CORS(corsConfig))
+func (srv HTTPServer) registerMiddlewares() {
+	// CORS recovery
+	srv.gin.Use(gin.Recovery())
 
 	ctx := context.Background()
 	if srv.environment == string(model.EnvironmentProduction) {
@@ -35,8 +31,6 @@ func (srv HTTPServer) registerMiddlewares(mw middleware.Middleware) {
 	} else {
 		srv.l.Infof(ctx, "CORS mode: %s", srv.environment)
 	}
-
-	srv.gin.Use(mw.Locale())
 }
 
 func (srv HTTPServer) registerSystemRoutes() {
@@ -51,19 +45,16 @@ func (srv HTTPServer) registerSystemRoutes() {
 	))
 }
 
-// registerDomainRoutes initializes and registers all domain routes.
-// Add new domains here following the same pattern as setupExampleDomain.
-func (srv HTTPServer) registerDomainRoutes(mw middleware.Middleware) error {
+// registerDomainRoutes registers all domain routes.
+func (srv HTTPServer) registerDomainRoutes() error {
 	ctx := context.Background()
 
-	api := srv.gin.Group("/api/v1")
-
-	if srv.postgresDB != nil {
-		if err := srv.setupExampleDomain(ctx, api, mw); err != nil {
-			return err
-		}
+	// Phase 2: Telegram webhook
+	if srv.telegramHandler != nil {
+		srv.gin.POST("/webhook/telegram", srv.telegramHandler.HandleWebhook)
+		srv.l.Infof(ctx, "Telegram webhook route registered at POST /webhook/telegram")
 	} else {
-		srv.l.Infof(ctx, "Skipping Example domain since PostgreSQL is not configured")
+		srv.l.Infof(ctx, "Telegram handler not configured, skipping webhook route")
 	}
 
 	return nil
