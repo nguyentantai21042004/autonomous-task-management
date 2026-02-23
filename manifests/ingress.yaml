@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smap-ingress
+  namespace: smap
+  annotations:
+    # Use Nginx Ingress Controller
+    kubernetes.io/ingress.class: nginx
+
+    # Rewrite path: Strip /knowledge prefix when forwarding to service
+    # Pattern: /knowledge(/|$)(.*) captures everything after /knowledge
+    # Rewrite: /$2 sends captured group to service
+    # Example: /knowledge/swagger/index.html -> /swagger/index.html
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+    # Increase timeouts for Ingress Controller (important for WebSocket)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+spec:
+  rules:
+    - host: autonomous-task-management.tantai.dev
+      http:
+        paths:
+          # --- ROUTE FOR IDENTITY SERVICE ---
+          # Pattern captures: /knowledge/anything -> group 2 = "anything"
+          # Rewrite target /$2 sends "anything" to service
+          - path: /knowledge(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: smap-knowledge-api
+                port:
+                  number: 80

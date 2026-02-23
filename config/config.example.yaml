@@ -1,0 +1,107 @@
+# SMAP Knowledge Service – Example configuration
+# Copy to knowledge-config.yaml and set secrets. Env vars override (e.g. POSTGRES_PASSWORD, JWT_SECRET_KEY).
+# Paths: ./config, ./, /etc/smap/
+
+# Environment
+environment:
+  name: development # production | staging | development
+
+# HTTP Server
+http_server:
+  port: 8080
+  mode: debug # debug | release | test
+
+# Logger
+logger:
+  level: debug
+  mode: debug
+  encoding: console # console | json
+  color_enabled: true
+
+# Qdrant
+qdrant:
+  host: localhost
+  port: 6334
+  api_key: "" # optional, for Qdrant Cloud
+  use_tls: false
+  timeout: 30 # seconds
+
+# Voyage AI
+# Get api_key: https://dash.voyageai.com/ → sign in → API Keys → Create new secret key
+# Or set env: VOYAGE_API_KEY=your_key (overrides value below)
+voyage:
+  api_key: "YOUR_VOYAGE_API_KEY"
+
+# Gemini
+# Get api_key: https://aistudio.google.com/app/apikey → sign in with Google → Create API key
+# Or set env: GEMINI_API_KEY=your_key
+# model: gemini-1.5-pro (quality) | gemini-1.5-flash (faster) | gemini-2.0-flash-exp (newer)
+# Docs: https://ai.google.dev/gemini-api/docs
+gemini:
+  api_key: "YOUR_GEMINI_API_KEY"
+  model: "gemini-1.5-pro"
+
+# PostgreSQL
+postgres:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: "postgres"
+  dbname: postgres
+  sslmode: prefer
+  schema: knowledge
+
+# Redis
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+# Project Service
+project:
+  url: "http://localhost:8081"
+  timeout: 10
+
+# MinIO
+minio:
+  endpoint: "localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  use_ssl: false
+  region: "us-east-1"
+  bucket: "smap-reports"
+  async_upload_workers: 4
+  async_upload_queue_size: 100
+
+# Kafka
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic: "knowledge.events"
+  group_id: "knowledge-consumer"
+
+# JWT
+jwt:
+  secret_key: "REPLACE-WITH-SHARED-SECRET-MIN-32-CHARS"
+
+# Cookie
+cookie:
+  domain: ".localhost"
+  secure: false
+  samesite: "Lax"
+  max_age: 28800
+  max_age_remember: 604800
+  name: "smap_auth_token"
+
+# Encrypter
+encrypter:
+  key: "REPLACE-WITH-32-CHAR-ENCRYPTION-KEY"
+
+# Internal auth
+internal:
+  internal_key: ""
+
+# Discord
+discord:
+  webhook_url: ""

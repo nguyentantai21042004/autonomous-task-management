@@ -1,1 +1,11 @@
-.vscode/
+.vscode
+
+# Dependencies
+vendor/
+.go-version
+
+# Swaggers
+docs
+
+# 
+config.yaml

@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smap-knowledge-config
+  namespace: smap
+  labels:
+    app: smap-knowledge-api
+data:
+  # HTTP Server Configuration
+  HOST: "0.0.0.0"
+  APP_PORT: "8080"
+  API_MODE: "release"
+
+  # Logger Configuration
+  LOGGER_LEVEL: "info"
+  LOGGER_MODE: "production"
+  LOGGER_ENCODING: "json"
+  LOGGER_COLOR_ENABLED: "false"
+
+  # SMTP Configuration (non-sensitive)
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_FROM: "noreply@smap.com"
+  SMTP_FROM_NAME: "SMAP"
+
+  # Cookie Configuration (for HttpOnly authentication)
+  COOKIE_DOMAIN: ".tantai.dev"
+  COOKIE_SECURE: "true"
+  COOKIE_SAMESITE: "None"
+  COOKIE_MAX_AGE: "7200"
+  COOKIE_MAX_AGE_REMEMBER: "2592000"
+  COOKIE_NAME: "smap_auth_token"
+
+  ENV: "dev"

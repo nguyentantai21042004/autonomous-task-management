@@ -1,0 +1,184 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-consumer
+  namespace: smap
+  labels:
+    app: knowledge-consumer
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: knowledge-consumer
+  template:
+    metadata:
+      labels:
+        app: knowledge-consumer
+        version: v1
+    spec:
+      containers:
+      - name: consumer
+        image: registry.smap.com/knowledge-consumer:latest
+        imagePullPolicy: Always
+        env:
+        # Environment
+        - name: ENVIRONMENT_NAME
+          value: "production"
+        
+        # Logger
+        - name: LOGGER_LEVEL
+          value: "info"
+        - name: LOGGER_MODE
+          value: "production"
+        - name: LOGGER_ENCODING
+          value: "json"
+        - name: LOGGER_COLOR_ENABLED
+          value: "false"
+        
+        # Kafka
+        - name: KAFKA_BROKERS
+          value: "kafka-0.kafka-headless.smap.svc.cluster.local:9092,kafka-1.kafka-headless.smap.svc.cluster.local:9092,kafka-2.kafka-headless.smap.svc.cluster.local:9092"
+        - name: KAFKA_TOPIC
+          value: "knowledge.events"
+        
+        # Redis
+        - name: REDIS_HOST
+          value: "redis-master.smap.svc.cluster.local"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        - name: REDIS_DB
+          value: "0"
+        
+        # PostgreSQL
+        - name: POSTGRES_HOST
+          value: "postgres.smap.svc.cluster.local"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        - name: POSTGRES_DBNAME
+          value: "smap"
+        - name: POSTGRES_SSLMODE
+          value: "require"
+        - name: POSTGRES_SCHEMA
+          value: "knowledge"
+        
+        # Qdrant
+        - name: QDRANT_HOST
+          value: "qdrant.smap.svc.cluster.local"
+        - name: QDRANT_PORT
+          value: "6334"
+        - name: QDRANT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: qdrant-secret
+              key: api-key
+        - name: QDRANT_USE_TLS
+          value: "true"
+        - name: QDRANT_TIMEOUT
+          value: "30"
+        
+        # MinIO
+        - name: MINIO_ENDPOINT
+          value: "minio.smap.svc.cluster.local:9000"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: secret-key
+        - name: MINIO_USE_SSL
+          value: "true"
+        - name: MINIO_REGION
+          value: "us-east-1"
+        - name: MINIO_BUCKET
+          value: "smap-knowledge"
+        
+        # AI Services
+        - name: VOYAGE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secret
+              key: voyage-api-key
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secret
+              key: gemini-api-key
+        - name: GEMINI_MODEL
+          value: "gemini-1.5-pro"
+        
+        # Discord (optional)
+        - name: DISCORD_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: discord-secret
+              key: webhook-url
+              optional: true
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep consumer | grep -v grep"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep consumer | grep -v grep"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-consumer
+  namespace: smap
+  labels:
+    app: knowledge-consumer
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: knowledge-consumer
