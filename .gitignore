@@ -7,5 +7,37 @@ vendor/
 # Swaggers
 docs
 
-# 
 config.yaml
+
+# Environment
+.env
+
+# Secrets
+google-credentials.json
+token.json
+secrets/
+
+# Docker volumes (nếu mount local)
+memos-data/
+qdrant-data/
+
+# Go
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

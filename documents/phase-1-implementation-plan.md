@@ -70,9 +70,9 @@ autonomous-task-management/
 
 **Yêu cầu:**
 
-- Service `memos`: Image official của Memos, expose port 5230, mount volume cho data persistence
-- Service `qdrant`: Image official của Qdrant, expose port 6333 (HTTP) và 6334 (gRPC), mount volume cho vector storage
-- Service `backend`: Build từ `cmd/api/Dockerfile`, expose port 8080, depends_on memos và qdrant
+- Service `memos`: Image official của Memos, expose port 5230, mount volume cho data persistence, **có healthcheck**
+- Service `qdrant`: Image official của Qdrant, expose port 6333 (HTTP) và 6334 (gRPC), mount volume cho vector storage, **có healthcheck**
+- Service `backend`: Build từ `cmd/api/Dockerfile`, expose port 8080, **depends_on với condition `service_healthy`**
 - Network: Tạo bridge network để các service giao tiếp nội bộ
 
 **Cấu hình chi tiết:**
@@ -93,6 +93,20 @@ services:
       - MEMOS_PORT=5230
     networks:
       - atm-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:5230/healthz",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   qdrant:
@@ -105,6 +119,12 @@ services:
       - qdrant-data:/qdrant/storage
     networks:
       - atm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   backend:
@@ -116,14 +136,17 @@ services:
       - "8080:8080"
     environment:
       - MEMOS_URL=http://memos:5230
+      - MEMOS_ACCESS_TOKEN=${MEMOS_ACCESS_TOKEN}
       - QDRANT_URL=http://qdrant:6333
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - GOOGLE_CALENDAR_CREDENTIALS=${GOOGLE_CALENDAR_CREDENTIALS}
+      - GOOGLE_SERVICE_ACCOUNT_JSON=${GOOGLE_SERVICE_ACCOUNT_JSON}
     volumes:
       - ./config/config.yaml:/app/config/config.yaml:ro
     depends_on:
-      - memos
-      - qdrant
+      memos:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     networks:
       - atm-network
     restart: unless-stopped
@@ -137,11 +160,29 @@ volumes:
   qdrant-data:
 ```
 
+**File:** `docker-compose.override.yml` (cho development với live-reload)
+
+```yaml
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/vendor # Exclude vendor from mount
+    environment:
+      - AIR_ENABLED=true
+    command: air -c .air.toml
+```
+
 ---
 
 #### Task 1.2: Cập nhật Dockerfile
 
-**File:** `cmd/api/Dockerfile`
+**File:** `cmd/api/Dockerfile` (Production)
 
 Cập nhật Dockerfile hiện tại để phù hợp với Phase 1:
 
@@ -162,7 +203,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata curl wget
 
 WORKDIR /app
 
@@ -177,6 +218,113 @@ EXPOSE 8080
 CMD ["./main"]
 ```
 
+**File:** `cmd/api/Dockerfile.dev` (Development với Air live-reload)
+
+```dockerfile
+FROM golang:1.21-alpine
+
+WORKDIR /app
+
+# Install Air for live reload
+RUN go install github.com/cosmtrek/air@latest
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code (will be overridden by volume mount)
+COPY . .
+
+EXPOSE 8080
+
+# Air will be started via docker-compose command
+CMD ["air", "-c", ".air.toml"]
+```
+
+**File:** `.air.toml` (Air configuration)
+
+```toml
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  args_bin = []
+  bin = "./tmp/main"
+  cmd = "go build -o ./tmp/main ./cmd/api"
+  delay = 1000
+  exclude_dir = ["assets", "tmp", "vendor", "testdata"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml", "yml"]
+  include_file = []
+  kill_delay = "0s"
+  log = "build-errors.log"
+  poll = false
+  poll_interval = 0
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = false
+  stop_on_error = false
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  main_only = false
+  time = false
+
+[misc]
+  clean_on_exit = false
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true
+```
+
+WORKDIR /app
+
+# Copy go mod files
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+
+COPY . .
+
+# Build binary
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy binary from builder
+
+COPY --from=builder /app/main .
+
+# Copy config directory
+
+COPY --from=builder /app/config ./config
+
+EXPOSE 8080
+
+CMD ["./main"]
+
+````
+
 ---
 
 #### Task 1.3: Cập nhật File Environment Template
@@ -187,20 +335,30 @@ CMD ["./main"]
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
-# Google Calendar OAuth (JSON string hoặc file path)
-GOOGLE_CALENDAR_CREDENTIALS=path/to/credentials.json
-
 # Memos Configuration
 MEMOS_URL=http://localhost:5230
+MEMOS_ACCESS_TOKEN=your_memos_access_token_here
 
 # Qdrant Configuration
 QDRANT_URL=http://localhost:6333
+
+# Google Service Account (JSON string hoặc base64)
+# Khuyên dùng Service Account thay vì OAuth Desktop App
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
 # Optional: Custom ports (nếu muốn override)
 # MEMOS_PORT=5230
 # QDRANT_HTTP_PORT=6333
 # BACKEND_PORT=8080
-```
+````
+
+**Hướng dẫn lấy Memos Access Token:**
+
+1. Truy cập http://localhost:5230
+2. Đăng nhập/Tạo tài khoản admin
+3. Vào Settings > Access Tokens
+4. Click "Create Token"
+5. Copy token và paste vào `.env`
 
 ---
 
@@ -781,31 +939,33 @@ See `documents/convention/` for detailed coding conventions.
 
 ## Roadmap
 
-- [x] Phase 1: Infrastructure Setup
+- [ ] Phase 1: Infrastructure Setup
 - [ ] Phase 2: Core Engine (Telegram + LLM + Bulk Processing)
 - [ ] Phase 3: RAG & Agent Tools
 - [ ] Phase 4: Automation & Webhooks
-
-```
 
 ---
 
 ### Checklist Hoàn thành Phase 1
 
-- [ ] `docker-compose.yml` với 3 services (Memos, Qdrant, Backend)
-- [ ] `cmd/api/Dockerfile` updated
-- [ ] `.env.example` đầy đủ
+- [ ] `docker-compose.yml` với healthchecks và service_healthy
+- [ ] `docker-compose.override.yml` cho development
+- [ ] `cmd/api/Dockerfile` updated (thêm curl/wget)
+- [ ] `cmd/api/Dockerfile.dev` với Air
+- [ ] `.air.toml` configuration
+- [ ] `.env.example` với MEMOS_ACCESS_TOKEN và GOOGLE_SERVICE_ACCOUNT_JSON
 - [ ] `manifests/tags-schema.json` định nghĩa hệ thống tags
-- [ ] `config/config.yaml` với cấu hình Memos, Qdrant, Telegram, Google Calendar
-- [ ] `config/config.go` updated để load config mới
+- [ ] `config/config.yaml` với memos.access_token và google config
+- [ ] `config/config.go` updated structs
 - [ ] `cmd/api/main.go` updated với graceful shutdown
 - [ ] Scripts `verify-setup.sh` và `init-memos.sh` với execute permission
-- [ ] Tài liệu `google-calendar-setup.md`
+- [ ] `documents/google-calendar-setup.md` updated với Service Account
 - [ ] `.gitignore` updated
 - [ ] `README.md` với hướng dẫn Quick Start
 - [ ] Test: `docker compose up` chạy thành công
-- [ ] Test: Truy cập được cả 3 services qua browser/curl
-- [ ] Test: Backend health check trả về 200 OK
+- [ ] Test: Backend chờ Memos/Qdrant healthy trước khi start
+- [ ] Test: Memos API authentication với token
+- [ ] Test: Live reload hoạt động (sửa code → auto restart)
 
 ---
 
@@ -819,18 +979,24 @@ Sau khi hoàn thành Phase 1, developer sẽ có:
 4. Tài liệu đầy đủ để onboard người mới
 5. Foundation vững chắc để implement business logic
 6. Cấu trúc code tuân thủ convention đã định nghĩa
+7. **Live reload cho development (Air)**
+8. **Healthcheck đảm bảo services sẵn sàng**
+9. **Authentication với Memos API**
+10. **Google Calendar headless với Service Account**
 
 ---
 
 ### Thời gian Ước tính
 
-- Setup Docker Compose: 1-2 giờ
-- Update Dockerfile và config: 2-3 giờ
+- Setup Docker Compose với healthchecks: 2-3 giờ
+- Update Dockerfile (production + dev): 2-3 giờ
+- Update config và environment: 2-3 giờ
+- Setup Air live reload: 1-2 giờ
 - Update main.go và wiring: 2-3 giờ
 - Scripts và documentation: 2-3 giờ
 - Testing và debugging: 2-3 giờ
 
-**Tổng: 9-14 giờ** (1-2 ngày làm việc)
+**Tổng: 13-20 giờ** (2-3 ngày làm việc)
 
 ---
 
@@ -842,17 +1008,236 @@ Sau khi hoàn thành Phase 1, developer sẽ có:
 
 3. **Testing**: Sau khi setup xong, test kỹ:
    - Health check endpoint
-   - Kết nối đến Memos
+   - Kết nối đến Memos với Access Token
    - Kết nối đến Qdrant
    - Graceful shutdown
+   - Live reload trong dev mode
 
 4. **Security**:
-   - Không commit `.env` hoặc `google-credentials.json`
+   - Không commit `.env`, `google-service-account.json`, hoặc `token.json`
    - Sử dụng environment variables cho sensitive data
    - Review `.gitignore` trước khi commit
+   - Rotate tokens định kỳ
 
 5. **Documentation**:
    - Cập nhật README.md nếu có thay đổi
    - Document các API endpoints mới (nếu có)
    - Giữ convention docs updated
+
+6. **Developer Experience**:
+   - Dùng `docker compose up` cho dev mode (auto-reload)
+   - Dùng `docker compose -f docker-compose.yml up` cho production mode
+   - Check logs thường xuyên: `docker compose logs -f backend`
+
+---
+
+## 🚨 Critical Improvements Applied
+
+### 1. Healthcheck cho Docker Services
+
+**Vấn đề:** Backend start trước khi Memos/Qdrant sẵn sàng → crash loop
+
+**Giải pháp:**
+
+- Thêm `healthcheck` cho Memos (wget check `/healthz`)
+- Thêm `healthcheck` cho Qdrant (curl check `/health`)
+- Update `depends_on` với `condition: service_healthy`
+- Thêm `curl` và `wget` vào Dockerfile
+
+### 2. Memos Access Token
+
+**Vấn đề:** Backend không có quyền gọi Memos API
+
+**Giải pháp:**
+
+- Thêm `MEMOS_ACCESS_TOKEN` vào `.env.example`
+- Update `config.yaml` với field `access_token`
+- Update `config.go` để load từ environment variable
+
+**Cách lấy token:**
+
+1. Truy cập http://localhost:5230
+2. Đăng nhập/Tạo tài khoản admin
+3. Vào Settings > Access Tokens
+4. Click "Create Token"
+5. Copy token và paste vào `.env`
+
+### 3. Google Service Account (thay OAuth Desktop App)
+
+**Vấn đề:** OAuth Desktop App không chạy được trong Docker container (headless environment)
+
+**Giải pháp:**
+
+- Đổi từ `GOOGLE_CALENDAR_CREDENTIALS` → `GOOGLE_SERVICE_ACCOUNT_JSON`
+- Update config struct từ `GoogleCalendarConfig` → `GoogleConfig`
+- Update `google-calendar-setup.md` với hướng dẫn Service Account
+
+**Tại sao Service Account tốt hơn:**
+
+- ✅ Chạy headless (không cần browser)
+- ✅ Không cần user interaction
+- ✅ Phù hợp cho backend service
+- ✅ Dễ rotate credentials
+
+### 4. Live Reload với Air (Development)
+
+**Vấn đề:** Mỗi lần sửa code phải rebuild Docker image → chậm, giảm DX
+
+**Giải pháp:**
+
+- Tạo `cmd/api/Dockerfile.dev` với Air pre-installed
+- Tạo `docker-compose.override.yml` cho dev mode
+- Tạo `.air.toml` configuration
+- Mount source code vào container
+
+**Usage:**
+
+```bash
+# Development mode (auto-reload)
+docker compose up
+
+# Production mode (no override)
+docker compose -f docker-compose.yml up
 ```
+
+---
+
+## 🎯 Verification Steps (Sau khi setup)
+
+### 1. Verify Services Health
+
+```bash
+# Check all services
+bash scripts/verify-setup.sh
+
+# Check individual services
+docker compose ps
+docker compose logs memos
+docker compose logs qdrant
+docker compose logs backend
+```
+
+### 2. Test Memos API
+
+```bash
+# Get Memos info
+curl -H "Authorization: Bearer $MEMOS_ACCESS_TOKEN" \
+     http://localhost:5230/api/v1/user/me
+
+# List memos
+curl -H "Authorization: Bearer $MEMOS_ACCESS_TOKEN" \
+     http://localhost:5230/api/v1/memos
+```
+
+### 3. Test Qdrant
+
+```bash
+# Check health
+curl http://localhost:6333/health
+
+# List collections
+curl http://localhost:6333/collections
+```
+
+### 4. Test Backend
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Root endpoint
+curl http://localhost:8080/
+```
+
+### 5. Test Live Reload (Dev Mode)
+
+```bash
+# Start in dev mode
+docker compose up
+
+# In another terminal, edit a file
+echo "// test change" >> cmd/api/main.go
+
+# Watch logs - should see rebuild and restart
+docker compose logs -f backend
+```
+
+---
+
+## 🔒 Security Checklist
+
+- [ ] `.env` trong `.gitignore`
+- [ ] `google-service-account.json` trong `.gitignore`
+- [ ] `token.json` trong `.gitignore`
+- [ ] Không commit sensitive data
+- [ ] Review `.env.example` không chứa real credentials
+- [ ] Memos Access Token được rotate định kỳ
+- [ ] Google Service Account key được bảo mật
+
+---
+
+## 💡 Troubleshooting
+
+### Backend crash loop
+
+**Triệu chứng:** Backend restart liên tục
+
+**Nguyên nhân:** Memos/Qdrant chưa sẵn sàng
+
+**Giải pháp:** Kiểm tra healthcheck đã được apply đúng
+
+```bash
+docker compose config | grep -A 5 healthcheck
+```
+
+### Memos API 401 Unauthorized
+
+**Triệu chứng:** Backend log "unauthorized" khi gọi Memos
+
+**Nguyên nhân:** Thiếu hoặc sai Access Token
+
+**Giải pháp:**
+
+1. Kiểm tra `.env` có `MEMOS_ACCESS_TOKEN`
+2. Verify token còn valid
+3. Restart backend: `docker compose restart backend`
+
+### Google Calendar authentication failed
+
+**Triệu chứng:** Backend log "invalid credentials"
+
+**Nguyên nhân:** Service Account JSON sai hoặc chưa share calendar
+
+**Giải pháp:**
+
+1. Verify JSON format đúng
+2. Check Service Account email
+3. Share Google Calendar với Service Account email
+4. Verify permissions (Make changes to events)
+
+### Live reload không hoạt động
+
+**Triệu chứng:** Sửa code nhưng không thấy rebuild
+
+**Nguyên nhân:** Không dùng `docker-compose.override.yml`
+
+**Giải pháp:**
+
+```bash
+# Ensure override file exists
+ls docker-compose.override.yml
+
+# Restart with override
+docker compose down
+docker compose up
+```
+
+---
+
+## 📚 References
+
+- [Memos API Documentation](https://www.usememos.com/docs/api)
+- [Qdrant Documentation](https://qdrant.tech/documentation/)
+- [Docker Compose Healthcheck](https://docs.docker.com/compose/compose-file/compose-file-v3/#healthcheck)
+- [Air - Live Reload for Go](https://github.com/cosmtrek/air)
+- [Google Service Account](https://cloud.google.com/iam/docs/service-accounts)

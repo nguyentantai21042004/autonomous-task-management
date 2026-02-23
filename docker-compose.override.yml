@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/vendor # Exclude vendor from mount
+    environment:
+      - AIR_ENABLED=true
+    command: air -c .air.toml

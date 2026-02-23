@@ -49,25 +49,30 @@ func main() {
 	defer stop()
 
 	logger.Info(ctx, "Starting service...")
+	logger.Infof(ctx, "Environment: %s", cfg.Environment.Name)
+	logger.Infof(ctx, "Memos URL: %s", cfg.Memos.URL)
+	logger.Infof(ctx, "Qdrant URL: %s", cfg.Qdrant.URL)
 
 	// 3. Infrastructure
 	encrypterInstance := encrypter.New(cfg.Encrypter.Key)
 
 	postgresDB, err := postgre.Connect(ctx, cfg.Postgres)
 	if err != nil {
-		logger.Error(ctx, "Failed to connect to PostgreSQL: ", err)
-		return
+		logger.Warnf(ctx, "Failed to connect to PostgreSQL (optional): %v", err)
+		postgresDB = nil
+	} else {
+		defer postgre.Disconnect(ctx, postgresDB)
+		logger.Info(ctx, "PostgreSQL connected")
 	}
-	defer postgre.Disconnect(ctx, postgresDB)
-	logger.Info(ctx, "PostgreSQL connected")
 
 	redisClient, err := redis.Connect(ctx, cfg.Redis)
 	if err != nil {
-		logger.Error(ctx, "Failed to connect to Redis: ", err)
-		return
+		logger.Warnf(ctx, "Failed to connect to Redis (optional): %v", err)
+		redisClient = nil
+	} else {
+		defer redis.Disconnect()
+		logger.Info(ctx, "Redis connected")
 	}
-	defer redis.Disconnect()
-	logger.Info(ctx, "Redis connected")
 
 	// 4. Optional: Kafka producer
 	kafkaProducer, err := kafka.ConnectProducer(cfg.Kafka)

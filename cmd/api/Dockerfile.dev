@@ -1,0 +1,18 @@
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install Air for live reload
+RUN go install github.com/air-verse/air@latest
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code (will be overridden by volume mount)
+COPY . .
+
+EXPOSE 8080
+
+# Air will be started via docker-compose command
+CMD ["air", "-c", ".air.toml"]

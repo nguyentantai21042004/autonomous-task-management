@@ -31,6 +31,12 @@ type Config struct {
 
 	// Monitoring
 	Discord DiscordConfig
+
+	// Autonomous Task Management specifics
+	Memos          MemosConfig
+	Qdrant         QdrantConfig
+	Telegram       TelegramConfig
+	GoogleCalendar GoogleCalendarConfig
 }
 
 type EnvironmentConfig struct {
@@ -97,6 +103,28 @@ type DiscordConfig struct {
 	WebhookURL string
 }
 
+type MemosConfig struct {
+	URL         string
+	APIVersion  string
+	AccessToken string
+}
+
+type QdrantConfig struct {
+	URL            string
+	CollectionName string
+	VectorSize     int
+}
+
+type TelegramConfig struct {
+	BotToken   string
+	WebhookURL string
+}
+
+type GoogleCalendarConfig struct {
+	CredentialsPath string
+	CalendarID      string
+}
+
 // Load loads configuration using Viper.
 // Config file name: config.yaml — searched in ./config, ., /etc/app/
 func Load() (*Config, error) {
@@ -160,7 +188,38 @@ func Load() (*Config, error) {
 	cfg.InternalConfig.InternalKey = viper.GetString("internal.internal_key")
 
 	// Monitoring
+	// Monitoring
 	cfg.Discord.WebhookURL = viper.GetString("discord.webhook_url")
+
+	// Autonomous Task Management specifics
+	cfg.Memos.URL = viper.GetString("memos.url")
+	cfg.Memos.APIVersion = viper.GetString("memos.api_version")
+	cfg.Memos.AccessToken = viper.GetString("memos.access_token")
+	if memosURL := viper.GetString("memos_url"); memosURL != "" {
+		cfg.Memos.URL = memosURL
+	}
+	if memosToken := viper.GetString("memos_access_token"); memosToken != "" {
+		cfg.Memos.AccessToken = memosToken
+	}
+
+	cfg.Qdrant.URL = viper.GetString("qdrant.url")
+	cfg.Qdrant.CollectionName = viper.GetString("qdrant.collection_name")
+	cfg.Qdrant.VectorSize = viper.GetInt("qdrant.vector_size")
+	if qdrantURL := viper.GetString("qdrant_url"); qdrantURL != "" {
+		cfg.Qdrant.URL = qdrantURL
+	}
+
+	cfg.Telegram.BotToken = viper.GetString("telegram.bot_token")
+	cfg.Telegram.WebhookURL = viper.GetString("telegram.webhook_url")
+	if tgToken := viper.GetString("telegram_bot_token"); tgToken != "" {
+		cfg.Telegram.BotToken = tgToken
+	}
+
+	cfg.GoogleCalendar.CredentialsPath = viper.GetString("google_calendar.credentials_path")
+	cfg.GoogleCalendar.CalendarID = viper.GetString("google_calendar.calendar_id")
+	if googleCreds := viper.GetString("google_service_account_json"); googleCreds != "" {
+		cfg.GoogleCalendar.CredentialsPath = googleCreds
+	}
 
 	if err := validate(cfg); err != nil {
 		return nil, err

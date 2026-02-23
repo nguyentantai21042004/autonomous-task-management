@@ -58,8 +58,12 @@ func (srv HTTPServer) registerDomainRoutes(mw middleware.Middleware) error {
 
 	api := srv.gin.Group("/api/v1")
 
-	if err := srv.setupExampleDomain(ctx, api, mw); err != nil {
-		return err
+	if srv.postgresDB != nil {
+		if err := srv.setupExampleDomain(ctx, api, mw); err != nil {
+			return err
+		}
+	} else {
+		srv.l.Infof(ctx, "Skipping Example domain since PostgreSQL is not configured")
 	}
 
 	return nil

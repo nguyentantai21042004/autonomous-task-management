@@ -98,17 +98,11 @@ func (srv HTTPServer) validate() error {
 	if srv.port == 0 {
 		return errors.New("port is required")
 	}
-	if srv.postgresDB == nil {
-		return errors.New("postgresDB is required")
-	}
 	if srv.config == nil {
 		return errors.New("config is required")
 	}
 	if srv.jwtManager == nil {
 		return errors.New("jwtManager is required")
-	}
-	if srv.redisClient == nil {
-		return errors.New("redisClient is required")
 	}
 	if srv.encrypter == nil {
 		return errors.New("encrypter is required")

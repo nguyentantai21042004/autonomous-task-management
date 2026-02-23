@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "tagCategories": {
+    "domain": {
+      "description": "Phân loại theo lĩnh vực công việc",
+      "examples": ["#domain/ahamove", "#domain/hcmut", "#domain/personal"]
+    },
+    "project": {
+      "description": "Phân loại theo dự án cụ thể",
+      "examples": ["#project/smap", "#project/thesis", "#project/side-hustle"]
+    },
+    "priority": {
+      "description": "Mức độ ưu tiên",
+      "values": ["#priority/p0", "#priority/p1", "#priority/p2", "#priority/p3"]
+    },
+    "status": {
+      "description": "Trạng thái công việc",
+      "values": [
+        "#status/todo",
+        "#status/in-progress",
+        "#status/blocked",
+        "#status/done"
+      ]
+    },
+    "type": {
+      "description": "Loại công việc",
+      "examples": [
+        "#type/coding",
+        "#type/meeting",
+        "#type/research",
+        "#type/review"
+      ]
+    }
+  },
+  "rules": {
+    "required": ["domain", "priority"],
+    "optional": ["project", "status", "type"]
+  }
+}
