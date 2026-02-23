@@ -49,7 +49,7 @@ func (h *handler) HandleWebhook(c *gin.Context) {
 		if err := h.processMessage(bgCtx, msg); err != nil {
 			h.l.Errorf(bgCtx, "telegram handler: background processMessage failed: %v", err)
 			// Best-effort error notification to user
-			_ = h.bot.SendMessage(msg.Chat.ID, "❌ Có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại.")
+			_ = h.bot.SendMessage(msg.Chat.ID, "Có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại.")
 		}
 	}()
 
@@ -96,7 +96,7 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 	output, err := h.uc.CreateBulk(ctx, sc, input)
 	if err != nil {
 		h.l.Errorf(ctx, "telegram handler: CreateBulk failed: %v", err)
-		return h.bot.SendMessage(msg.Chat.ID, fmt.Sprintf("❌ Không thể xử lý yêu cầu: %v", err))
+		return h.bot.SendMessage(msg.Chat.ID, fmt.Sprintf("Không thể xử lý yêu cầu: %v", err))
 	}
 
 	if output.TaskCount == 0 {
@@ -104,7 +104,7 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 	}
 
 	// Build success reply
-	reply := fmt.Sprintf("✅ Đã tạo *%d task(s)* thành công!\n\n", output.TaskCount)
+	reply := fmt.Sprintf("Đã tạo *%d task(s)* thành công!\n\n", output.TaskCount)
 	for i, t := range output.Tasks {
 		reply += fmt.Sprintf("%d. *%s*", i+1, t.Title)
 		if t.MemoURL != "" {

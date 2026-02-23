@@ -73,7 +73,7 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Printf("✅ token.json đã được lưu tại: %s\n", tokenPath)
+	fmt.Printf("token.json đã được lưu tại: %s\n", tokenPath)
 	fmt.Println("Bây giờ restart backend để Google Calendar hoạt động:")
 	fmt.Println("  docker compose restart backend")
 }

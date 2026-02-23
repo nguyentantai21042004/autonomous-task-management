@@ -83,7 +83,7 @@ func main() {
 				logger.Warnf(ctx, "Google Calendar not available (optional): %v", err)
 				logger.Warn(ctx, "→ Run `go run scripts/gcal-auth/main.go` to generate token.json")
 			} else {
-				logger.Info(ctx, "✅ Google Calendar initialized")
+				logger.Info(ctx, "Google Calendar initialized")
 			}
 		}
 
@@ -109,7 +109,7 @@ func main() {
 			if whErr := telegramBot.SetWebhook(webhookURL); whErr != nil {
 				logger.Warnf(ctx, "Failed to set Telegram webhook: %v", whErr)
 			} else {
-				logger.Infof(ctx, "✅ Telegram webhook registered at %s", webhookURL)
+				logger.Infof(ctx, "Telegram webhook registered at %s", webhookURL)
 			}
 		}
 
