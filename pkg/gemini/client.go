@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-const defaultModel = "gemini-1.5-flash"
+const defaultModel = "gemini-2.5-flash"
 
 // Client is the Gemini Generative Language API client.
 type Client struct {
@@ -23,7 +23,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		apiKey:     apiKey,
-		apiURL:     "https://generativelanguage.googleapis.com/v1",
+		apiURL:     "https://generativelanguage.googleapis.com/v1beta",
 		model:      defaultModel,
 		httpClient: &http.Client{},
 	}
