@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -63,26 +64,45 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 		return nil
 	}
 
-	// ---- Built-in commands ----
-	switch msg.Text {
-	case "/start":
-		return h.bot.SendMessageWithMode(msg.Chat.ID,
-			"👋 Chào mừng đến với *Autonomous Task Management*!\n\nGửi cho tôi danh sách công việc của bạn và tôi sẽ tự động:\n• 📝 Tạo tasks trong Memos\n• 📅 Đặt lịch trong Google Calendar\n\n_Ví dụ: \"Hoàn thành báo cáo SMAP ngày mai, review code cho Ahamove hôm nay\"_",
-			"Markdown",
-		)
-	case "/help":
-		return h.bot.SendMessageWithMode(msg.Chat.ID,
-			"*Cách sử dụng:*\n\nNhập vào danh sách công việc tự nhiên, ví dụ:\n`Họp với team vào thứ Hai, viết unit test hôm nay ưu tiên p1, nghiên cứu Qdrant trong 2 ngày tới`\n\nBot sẽ phân tích và tạo tasks tương ứng.",
-			"Markdown",
-		)
+	// Handle built-in commands
+	if msg.Text == "/start" {
+		return h.bot.SendMessage(msg.Chat.ID, "Chào mừng đến với Autonomous Task Management!\n\n"+
+			"Bạn có thể:\n"+
+			"- Tạo task: gửi mô tả công việc (mặc định)\n"+
+			"- Tìm task: dùng lệnh /search <query>\n"+
+			"- Ví dụ: /search task SMAP đang block")
 	}
 
-	// Build scope from Telegram user context
+	if msg.Text == "/help" {
+		return h.bot.SendMessage(msg.Chat.ID, "📖 Hướng dẫn sử dụng:\n\n"+
+			"**Tạo task:**\n"+
+			"Finish SMAP report by tomorrow\n"+
+			"Review code today p1\n"+
+			"Tìm hiểu cách tích hợp VNPay (sẽ tạo task, KHÔNG search)\n\n"+
+			"**Tìm task:**\n"+
+			"/search task SMAP đang block\n"+
+			"/search ahamove high priority\n"+
+			"/search tasks due this week")
+	}
+
+	// Build scope from Telegram user
 	sc := model.Scope{
-		UserID:   fmt.Sprintf("telegram_%d", msg.From.ID),
-		Username: msg.From.Username,
+		UserID: fmt.Sprintf("telegram_%d", msg.From.ID),
 	}
 
+	// CRITICAL FIX: Use explicit command instead of regex intent detection
+	// Problem: "Tìm hiểu cách tích hợp VNPay" would be detected as search intent
+	// Solution: Use /search command for explicit search, default to create task
+	if strings.HasPrefix(msg.Text, "/search ") {
+		return h.handleSearch(ctx, sc, msg)
+	}
+
+	// Default: create task (safer than regex intent detection)
+	return h.handleCreateTask(ctx, sc, msg)
+}
+
+// handleCreateTask processes requests to create tasks.
+func (h *handler) handleCreateTask(ctx context.Context, sc model.Scope, msg *pkgTelegram.Message) error {
 	// Notify user that processing has started
 	if err := h.bot.SendMessage(msg.Chat.ID, "⏳ Đang xử lý..."); err != nil {
 		h.l.Warnf(ctx, "telegram handler: failed to send ack message: %v", err)
@@ -117,4 +137,57 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 	}
 
 	return h.bot.SendMessageWithMode(msg.Chat.ID, reply, "Markdown")
+}
+
+// handleSearch processes search requests.
+func (h *handler) handleSearch(ctx context.Context, sc model.Scope, msg *pkgTelegram.Message) error {
+	// Extract query (remove /search command)
+	query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/search"))
+
+	input := task.SearchInput{
+		Query: query,
+		Limit: 5, // Top 5 results
+	}
+
+	output, err := h.uc.Search(ctx, sc, input)
+	if err != nil {
+		h.l.Errorf(ctx, "Search failed: %v", err)
+		return h.bot.SendMessage(msg.Chat.ID, "Có lỗi khi tìm kiếm. Vui lòng thử lại.")
+	}
+
+	if output.Count == 0 {
+		return h.bot.SendMessage(msg.Chat.ID, "Không tìm thấy task nào phù hợp.")
+	}
+
+	// Format results
+	response := fmt.Sprintf("🔍 Tìm thấy %d task:\n\n", output.Count)
+	for i, result := range output.Results {
+		// Extract title from content (first line)
+		title := extractTitle(result.Content)
+		score := int(result.Score * 100)
+
+		response += fmt.Sprintf("%d. %s\n", i+1, title)
+		response += fmt.Sprintf("   📊 Độ phù hợp: %d%%\n", score)
+		response += fmt.Sprintf("   🔗 [Xem chi tiết](%s)\n\n", result.MemoURL)
+	}
+
+	return h.bot.SendMessageWithMode(msg.Chat.ID, response, "Markdown")
+}
+
+// extractTitle extracts the first line from markdown content.
+func extractTitle(content string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			// Remove markdown formatting
+			line = strings.ReplaceAll(line, "**", "")
+			line = strings.ReplaceAll(line, "*", "")
+			if len(line) > 100 {
+				return line[:100] + "..."
+			}
+			return line
+		}
+	}
+	return "Untitled"
 }

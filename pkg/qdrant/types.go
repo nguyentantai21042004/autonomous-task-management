@@ -1,64 +1,51 @@
 package qdrant
 
-import (
-	"time"
-
-	pb "github.com/qdrant/go-client/qdrant"
-	"google.golang.org/grpc"
-)
-
-// Config is an alias for QdrantConfig (backward compatibility with config layer).
-type Config = QdrantConfig
-
-// QdrantConfig holds Qdrant configuration.
-type QdrantConfig struct {
-	Host    string
-	Port    int
-	UseTLS  bool
-	APIKey  string
-	Timeout time.Duration
+// CreateCollectionRequest defines the schema for creating a collection.
+type CreateCollectionRequest struct {
+	Name    string       `json:"-"` // Collection name (in URL)
+	Vectors VectorConfig `json:"vectors"`
 }
 
-// qdrantImpl implements IQdrant and wraps the Qdrant gRPC client.
-type qdrantImpl struct {
-	conn              *grpc.ClientConn
-	pointsClient      pb.PointsClient
-	collectionsClient pb.CollectionsClient
-	defaultTimeout    time.Duration
+// VectorConfig defines vector dimension and distance metric.
+type VectorConfig struct {
+	Size     int    `json:"size"`     // Vector dimension (e.g., 768 for Gemini)
+	Distance string `json:"distance"` // "Cosine", "Euclid", "Dot"
 }
 
-// Point represents a vector point in Qdrant
+// Point represents a vector with payload (metadata).
+// CRITICAL: Qdrant requires ID to be UUID or uint64, NOT arbitrary string!
 type Point struct {
-	ID      string
-	Vector  []float32
-	Payload map[string]interface{}
+	ID      interface{}            `json:"id"`      // UUID string or uint64 (NOT arbitrary string!)
+	Vector  []float32              `json:"vector"`  // Embedding vector
+	Payload map[string]interface{} `json:"payload"` // Metadata (memo_id, title, tags, etc.)
 }
 
-// SearchResult represents a search result from Qdrant
-type SearchResult struct {
-	ID      string
-	Score   float32
-	Payload map[string]interface{}
+// UpsertPointsRequest is the request to insert/update points.
+type UpsertPointsRequest struct {
+	Points []Point `json:"points"`
 }
 
-// CollectionInfo represents collection metadata
-type CollectionInfo struct {
-	Name        string
-	VectorSize  uint64
-	Distance    string
-	PointsCount uint64
-	Status      string
+// SearchRequest is the request for semantic search.
+type SearchRequest struct {
+	Vector      []float32              `json:"vector"`           // Query vector
+	Limit       int                    `json:"limit"`            // Top-K results
+	WithPayload bool                   `json:"with_payload"`     // Include metadata
+	Filter      map[string]interface{} `json:"filter,omitempty"` // Optional filters
 }
 
-// GroupResult represents a group of search results
-type GroupResult struct {
-	ID    interface{} // Group Key (string or int)
-	Hits  []SearchResult
-	Count uint64
+// SearchResponse contains search results.
+type SearchResponse struct {
+	Result []ScoredPoint `json:"result"`
 }
 
-// FacetResult represents a facet value and its count
-type FacetResult struct {
-	Value interface{}
-	Count uint64
+// ScoredPoint is a search result with similarity score.
+type ScoredPoint struct {
+	ID      string                 `json:"id"`
+	Score   float64                `json:"score"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// DeletePointsRequest is the request to delete points.
+type DeletePointsRequest struct {
+	Points []string `json:"points"`
 }

@@ -53,6 +53,14 @@ func (uc *implUseCase) CreateBulk(ctx context.Context, sc model.Scope, input tas
 			continue
 		}
 
+		// Embed task to Qdrant (non-blocking on failure)
+		if uc.vectorRepo != nil {
+			if embedErr := uc.vectorRepo.EmbedTask(ctx, memoTask); embedErr != nil {
+				uc.l.Warnf(ctx, "CreateBulk: failed to embed task %s to Qdrant: %v", memoTask.ID, embedErr)
+				// Don't fail the whole operation
+			}
+		}
+
 		// Attempt to create Google Calendar event (non-blocking on failure)
 		calendarLink := uc.tryCreateCalendarEvent(ctx, t, memoTask)
 

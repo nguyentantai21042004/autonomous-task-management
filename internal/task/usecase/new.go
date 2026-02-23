@@ -9,13 +9,14 @@ import (
 )
 
 type implUseCase struct {
-	l        pkgLog.Logger
-	llm      *gemini.Client
-	calendar *gcalendar.Client
-	repo     repository.MemosRepository
-	dateMath *datemath.Parser
-	timezone string
-	memosURL string
+	l          pkgLog.Logger
+	llm        *gemini.Client
+	calendar   *gcalendar.Client
+	repo       repository.MemosRepository
+	vectorRepo repository.VectorRepository
+	dateMath   *datemath.Parser
+	timezone   string
+	memosURL   string
 }
 
 // New creates a new task UseCase instance.
@@ -24,17 +25,19 @@ func New(
 	llm *gemini.Client,
 	calendar *gcalendar.Client,
 	repo repository.MemosRepository,
+	vectorRepo repository.VectorRepository,
 	dateMath *datemath.Parser,
 	timezone string,
 	memosURL string,
 ) *implUseCase {
 	return &implUseCase{
-		l:        l,
-		llm:      llm,
-		calendar: calendar,
-		repo:     repo,
-		dateMath: dateMath,
-		timezone: timezone,
-		memosURL: memosURL,
+		l:          l,
+		llm:        llm,
+		calendar:   calendar,
+		repo:       repo,
+		vectorRepo: vectorRepo,
+		dateMath:   dateMath,
+		timezone:   timezone,
+		memosURL:   memosURL,
 	}
 }

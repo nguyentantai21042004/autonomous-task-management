@@ -11,13 +11,17 @@ import (
 	_ "autonomous-task-management/docs" // Swagger docs
 	"autonomous-task-management/internal/httpserver"
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
+	"autonomous-task-management/internal/task/repository"
 	memosRepo "autonomous-task-management/internal/task/repository/memos"
+	qdrantRepo "autonomous-task-management/internal/task/repository/qdrant"
 	"autonomous-task-management/internal/task/usecase"
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/gcalendar"
 	"autonomous-task-management/pkg/gemini"
 	"autonomous-task-management/pkg/log"
+	pkgQdrant "autonomous-task-management/pkg/qdrant"
 	"autonomous-task-management/pkg/telegram"
+	"autonomous-task-management/pkg/voyage"
 )
 
 // @title       Autonomous Task Management API
@@ -87,8 +91,46 @@ func main() {
 			}
 		}
 
+		// Qdrant Vector repository (optional, but recommended for Phase 3)
+		// Let's use the interface type properly
+		var vectorRepoInterface repository.VectorRepository
+		if cfg.Qdrant.URL != "" {
+			logger.Info(ctx, "Initializing Qdrant...")
+
+			qdrantClient := pkgQdrant.NewClient(cfg.Qdrant.URL)
+
+			// Initialize Voyage AI embedding client
+			embeddingClient, voyageErr := voyage.New(cfg.Voyage.APIKey)
+			if voyageErr != nil {
+				logger.Warnf(ctx, "Failed to initialize Voyage AI client: %v", voyageErr)
+			}
+
+			// Create collection if not exists
+			collectionReq := pkgQdrant.CreateCollectionRequest{
+				Name: cfg.Qdrant.CollectionName,
+				Vectors: pkgQdrant.VectorConfig{
+					Size:     cfg.Qdrant.VectorSize,
+					Distance: "Cosine",
+				},
+			}
+
+			if err := qdrantClient.CreateCollection(ctx, collectionReq); err != nil {
+				logger.Warnf(ctx, "Qdrant collection creation warning: %v (may already exist)", err)
+			} else {
+				logger.Infof(ctx, "Qdrant collection %q created", cfg.Qdrant.CollectionName)
+			}
+
+			// Initialize Qdrant repository
+			if embeddingClient != nil {
+				vectorRepoInterface = qdrantRepo.New(qdrantClient, embeddingClient, cfg.Qdrant.CollectionName, logger)
+				logger.Info(ctx, "Qdrant initialized successfully")
+			} else {
+				logger.Warn(ctx, "Qdrant initialization skipped because embedding client failed")
+			}
+		}
+
 		// Task UseCase
-		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, dateMathParser, timezone, cfg.Memos.URL)
+		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.URL)
 
 		// Telegram Delivery handler
 		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot)

@@ -38,6 +38,7 @@ type Config struct {
 	Telegram       TelegramConfig
 	GoogleCalendar GoogleCalendarConfig
 	Gemini         GeminiConfig
+	Voyage         VoyageConfig
 }
 
 type EnvironmentConfig struct {
@@ -127,8 +128,13 @@ type GoogleCalendarConfig struct {
 }
 
 type GeminiConfig struct {
-	APIKey   string
-	Timezone string // IANA timezone, e.g. "Asia/Ho_Chi_Minh"
+	APIKey         string
+	Timezone       string // IANA timezone, e.g. "Asia/Ho_Chi_Minh"
+	EmbeddingModel string // DEPRECATED: Gemini embeddings were removed in v1beta
+}
+
+type VoyageConfig struct {
+	APIKey string
 }
 
 // Load loads configuration using Viper.
@@ -235,6 +241,12 @@ func Load() (*Config, error) {
 	}
 	if tz := viper.GetString("gemini_timezone"); tz != "" {
 		cfg.Gemini.Timezone = tz
+	}
+
+	// Voyage AI
+	cfg.Voyage.APIKey = viper.GetString("voyage.api_key")
+	if voyageKey := viper.GetString("voyage_api_key"); voyageKey != "" {
+		cfg.Voyage.APIKey = voyageKey
 	}
 
 	if err := validate(cfg); err != nil {
