@@ -13,7 +13,12 @@ import (
 
 // parseInputWithLLM sends raw user text to Gemini and returns parsed tasks.
 func (uc *implUseCase) parseInputWithLLM(ctx context.Context, rawText string) ([]gemini.ParsedTask, error) {
-	prompt := gemini.BuildTaskParsingPrompt(rawText)
+	loc, err := time.LoadLocation(uc.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	nowStr := time.Now().In(loc).Format(time.RFC3339)
+	prompt := gemini.BuildTaskParsingPrompt(rawText, nowStr)
 
 	req := gemini.GenerateRequest{
 		Contents: []gemini.Content{
@@ -75,16 +80,21 @@ func sanitizeJSONResponse(text string) string {
 	return strings.TrimSpace(text[start : end+1])
 }
 
-// resolveDueDates resolves relative dates from parsed tasks into absolute times.
+// resolveDueDates resolves absolute dates from parsed tasks into time.Time.
 func (uc *implUseCase) resolveDueDates(parsed []gemini.ParsedTask) []taskWithDate {
 	now := time.Now()
+	if loc, err := time.LoadLocation(uc.timezone); err == nil {
+		now = now.In(loc)
+	}
+
 	result := make([]taskWithDate, 0, len(parsed))
 
 	for _, p := range parsed {
-		absTime, err := uc.dateMath.Parse(p.DueDateRelative, now)
+		absTime, err := time.Parse(time.RFC3339, p.DueDateAbsolute)
 		if err != nil {
-			uc.l.Infof(context.Background(), "Failed to parse relative date %q, defaulting to today: %v", p.DueDateRelative, err)
-			absTime = uc.dateMath.EndOfDay(now)
+			uc.l.Infof(context.Background(), "Failed to parse absolute date %q from LLM, defaulting to end of today: %v", p.DueDateAbsolute, err)
+			todayStart, _ := uc.dateMath.Parse("today", now)
+			absTime = uc.dateMath.EndOfDay(todayStart)
 		}
 
 		result = append(result, taskWithDate{

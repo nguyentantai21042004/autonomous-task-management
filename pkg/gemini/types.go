@@ -36,7 +36,7 @@ type Candidate struct {
 type ParsedTask struct {
 	Title                    string   `json:"title"`
 	Description              string   `json:"description"`
-	DueDateRelative          string   `json:"due_date_relative"`
+	DueDateAbsolute          string   `json:"due_date_absolute"`
 	Priority                 string   `json:"priority"`
 	Tags                     []string `json:"tags"`
 	EstimatedDurationMinutes int      `json:"estimated_duration_minutes"`
