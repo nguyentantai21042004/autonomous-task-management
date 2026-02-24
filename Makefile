@@ -6,10 +6,6 @@ help: ## Show this help message
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-models: ## Generate models
-	@echo "Generating models"
-	@sqlboiler psql
-
 swagger:
 	@echo "Generating swagger"
 	@swag init -g cmd/api/main.go
@@ -25,5 +21,11 @@ run-api:
 	@echo "Running the application"
 	@go run cmd/api/main.go
 
-run-consumer: ## Run consumer service locally
-	go run cmd/consumer/main.go
+up: ## Start infrastructure via docker-compose
+	docker compose --env-file .env -f manifests/docker-compose/docker-compose.yml up -d
+
+down: ## Stop infrastructure via docker-compose
+	docker compose --env-file .env -f manifests/docker-compose/docker-compose.yml down
+
+logs: ## Tail backend logs
+	docker compose --env-file .env -f manifests/docker-compose/docker-compose.yml logs -f backend

@@ -43,3 +43,9 @@ go.work
 Thumbs.db
 
 google-credentials.json
+# Secrets folder
+secrets/
+*credentials*.json
+token.json
+*.pem
+*.key

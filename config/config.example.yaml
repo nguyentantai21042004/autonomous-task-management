@@ -1,107 +1,50 @@
-# SMAP Knowledge Service – Example configuration
-# Copy to knowledge-config.yaml and set secrets. Env vars override (e.g. POSTGRES_PASSWORD, JWT_SECRET_KEY).
-# Paths: ./config, ./, /etc/smap/
-
-# Environment
 environment:
-  name: development # production | staging | development
+  name: "development"
 
-# HTTP Server
 http_server:
   port: 8080
-  mode: debug # debug | release | test
+  mode: "debug"
 
-# Logger
 logger:
-  level: debug
-  mode: debug
-  encoding: console # console | json
+  level: "debug"
+  mode: "debug"
+  encoding: "console"
   color_enabled: true
 
-# Qdrant
+# Memos Configuration
+memos:
+  url: "http://your-memos-instance:5230"
+  api_version: "v1"
+  access_token: "" # Set via env: MEMOS_ACCESS_TOKEN
+
+# Qdrant Configuration
 qdrant:
-  host: localhost
-  port: 6334
-  api_key: "" # optional, for Qdrant Cloud
-  use_tls: false
-  timeout: 30 # seconds
+  url: "http://your-qdrant-instance:6333"
+  collection_name: "tasks"
+  vector_size: 1024 # Voyage voyage-3 uses 1024 dimensions
 
-# Voyage AI
-# Get api_key: https://dash.voyageai.com/ → sign in → API Keys → Create new secret key
-# Or set env: VOYAGE_API_KEY=your_key (overrides value below)
-voyage:
-  api_key: "YOUR_VOYAGE_API_KEY"
-
-# Gemini
-# Get api_key: https://aistudio.google.com/app/apikey → sign in with Google → Create API key
-# Or set env: GEMINI_API_KEY=your_key
-# model: gemini-1.5-pro (quality) | gemini-1.5-flash (faster) | gemini-2.0-flash-exp (newer)
-# Docs: https://ai.google.dev/gemini-api/docs
-gemini:
-  api_key: "YOUR_GEMINI_API_KEY"
-  model: "gemini-1.5-pro"
-
-# PostgreSQL
-postgres:
-  host: localhost
-  port: 5432
-  user: postgres
-  password: "postgres"
-  dbname: postgres
-  sslmode: prefer
-  schema: knowledge
-
-# Redis
-redis:
-  host: localhost
-  port: 6379
-  password: ""
-  db: 0
-
-# Project Service
-project:
-  url: "http://localhost:8081"
-  timeout: 10
-
-# MinIO
-minio:
-  endpoint: "localhost:9000"
-  access_key: "minioadmin"
-  secret_key: "minioadmin"
-  use_ssl: false
-  region: "us-east-1"
-  bucket: "smap-reports"
-  async_upload_workers: 4
-  async_upload_queue_size: 100
-
-# Kafka
-kafka:
-  brokers:
-    - "localhost:9092"
-  topic: "knowledge.events"
-  group_id: "knowledge-consumer"
-
-# JWT
-jwt:
-  secret_key: "REPLACE-WITH-SHARED-SECRET-MIN-32-CHARS"
-
-# Cookie
-cookie:
-  domain: ".localhost"
-  secure: false
-  samesite: "Lax"
-  max_age: 28800
-  max_age_remember: 604800
-  name: "smap_auth_token"
-
-# Encrypter
-encrypter:
-  key: "REPLACE-WITH-32-CHAR-ENCRYPTION-KEY"
-
-# Internal auth
-internal:
-  internal_key: ""
-
-# Discord
-discord:
+# Telegram Bot Configuration
+telegram:
+  bot_token: "" # Set via environment variable
   webhook_url: ""
+
+# Gemini LLM Configuration
+gemini:
+  api_key: "" # Set via environment variable
+  timezone: "Asia/Ho_Chi_Minh"
+
+# Voyage AI Configuration (for embeddings)
+voyage:
+  api_key: "" # Set via environment variable
+
+# Google Calendar Configuration
+google_calendar:
+  credentials_path: "" # Set via environment variable
+  calendar_id: "primary"
+
+# Phase 4: Git Webhook Configuration
+webhook:
+  enabled: true
+  secret: "" # Set via environment variable WEBHOOK_SECRET
+  allowed_ips: "" # Comma separated list of IPs
+  rate_limit_per_min: 60
