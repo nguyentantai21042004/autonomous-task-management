@@ -65,5 +65,14 @@ func (srv HTTPServer) registerDomainRoutes() error {
 		srv.l.Infof(ctx, "Webhook handler not configured, skipping Memos webhook route")
 	}
 
+	// Phase 4: Git Webhooks
+	if srv.gitWebhookHandler != nil {
+		srv.gin.POST("/webhook/github", srv.gitWebhookHandler.HandleGitHubWebhook)
+		srv.gin.POST("/webhook/gitlab", srv.gitWebhookHandler.HandleGitLabWebhook)
+		srv.l.Infof(ctx, "Git webhook routes registered at POST /webhook/github and POST /webhook/gitlab")
+	} else {
+		srv.l.Infof(ctx, "Git webhook handler not configured, skipping Git webhook routes")
+	}
+
 	return nil
 }

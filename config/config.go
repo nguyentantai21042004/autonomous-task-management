@@ -23,6 +23,9 @@ type Config struct {
 	GoogleCalendar GoogleCalendarConfig
 	Gemini         GeminiConfig
 	Voyage         VoyageConfig
+
+	// Webhooks
+	Webhook WebhookConfig
 }
 
 type EnvironmentConfig struct {
@@ -70,6 +73,13 @@ type GeminiConfig struct {
 
 type VoyageConfig struct {
 	APIKey string
+}
+
+type WebhookConfig struct {
+	Enabled         bool
+	Secret          string
+	AllowedIPs      []string
+	RateLimitPerMin int
 }
 
 // Load loads configuration using Viper.
@@ -149,6 +159,26 @@ func Load() (*Config, error) {
 		cfg.Voyage.APIKey = voyageKey
 	}
 
+	// Webhooks
+	cfg.Webhook.Enabled = viper.GetBool("webhook.enabled")
+	cfg.Webhook.Secret = viper.GetString("webhook.secret")
+	if webhookSecret := viper.GetString("webhook_secret"); webhookSecret != "" {
+		cfg.Webhook.Secret = webhookSecret
+	}
+	cfg.Webhook.RateLimitPerMin = viper.GetInt("webhook.rate_limit_per_min")
+
+	// Split allowed IPs since viper might not parse array seamlessly from env
+	var ips []string
+	if rawIps := viper.GetString("webhook.allowed_ips"); rawIps != "" {
+		for _, ip := range strings.Split(rawIps, ",") {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				ips = append(ips, ip)
+			}
+		}
+	}
+	cfg.Webhook.AllowedIPs = ips
+
 	return cfg, nil
 }
 
@@ -163,4 +193,6 @@ func setDefaults() {
 	viper.SetDefault("gemini.timezone", "Asia/Ho_Chi_Minh")
 	viper.SetDefault("qdrant.collection_name", "tasks")
 	viper.SetDefault("qdrant.vector_size", 1024)
+	viper.SetDefault("webhook.rate_limit_per_min", 60)
+	viper.SetDefault("webhook.enabled", true)
 }

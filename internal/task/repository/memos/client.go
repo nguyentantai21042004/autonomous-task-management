@@ -59,6 +59,40 @@ func (c *Client) CreateMemo(ctx context.Context, req CreateMemoRequest) (*Memo, 
 	return &memo, nil
 }
 
+// UpdateMemo updates an existing memo via PATCH /api/v1/memos/{id}.
+func (c *Client) UpdateMemo(ctx context.Context, id string, req UpdateMemoRequest) (*Memo, error) {
+	url := fmt.Sprintf("%s/api/v1/memos/%s", c.baseURL, id)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal update memo request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build update memo request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call memos update API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("memos API update error %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var memo Memo
+	if err := json.NewDecoder(resp.Body).Decode(&memo); err != nil {
+		return nil, fmt.Errorf("failed to decode memos update response: %w", err)
+	}
+	return &memo, nil
+}
+
 // GetMemo fetches a single memo by its ID.
 func (c *Client) GetMemo(ctx context.Context, id string) (*Memo, error) {
 	url := fmt.Sprintf("%s/api/v1/memos/%s", c.baseURL, id)
@@ -126,6 +160,12 @@ func (c *Client) ListMemos(ctx context.Context, tag string, limit, offset int) (
 type CreateMemoRequest struct {
 	Content    string `json:"content"`
 	Visibility string `json:"visibility"`
+}
+
+// UpdateMemoRequest is the body for PATCH /api/v1/memos/{id}.
+type UpdateMemoRequest struct {
+	Content    string `json:"content"`
+	UpdateMask string `json:"updateMask"`
 }
 
 // Memo is the Memos API memo object.

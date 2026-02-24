@@ -49,6 +49,9 @@ func (r *implRepository) EmbedTask(ctx context.Context, task model.Task) error {
 	// Qdrant requires ID to be UUID or uint64, NOT arbitrary string
 	qdrantID := memoIDToUUID(task.ID)
 
+	// NEW: Extract tags from content
+	tags := extractTags(task.Content)
+
 	// Create point
 	point := pkgQdrant.Point{
 		ID:     qdrantID, // UUID string
@@ -57,6 +60,7 @@ func (r *implRepository) EmbedTask(ctx context.Context, task model.Task) error {
 			"memo_id":     task.ID, // Store original Memos ID in payload
 			"memo_url":    task.MemoURL,
 			"content":     task.Content,
+			"tags":        tags,
 			"create_time": task.CreateTime,
 			"update_time": task.UpdateTime,
 		},
@@ -133,6 +137,59 @@ func (r *implRepository) SearchTasks(ctx context.Context, opt repository.SearchT
 	}
 
 	r.l.Infof(ctx, "qdrant repository: found %d results for query %q", len(results), opt.Query)
+	return results, nil
+}
+
+// SearchTasksWithFilter performs semantic search with payload filtering.
+func (r *implRepository) SearchTasksWithFilter(ctx context.Context, opt repository.SearchTasksOptions) ([]repository.SearchResult, error) {
+	dummyVector := make([]float32, 1024)
+
+	var shouldConditions []map[string]interface{}
+	for _, cond := range opt.Filter.Should {
+		shouldConditions = append(shouldConditions, map[string]interface{}{
+			"key": cond.Key,
+			"match": map[string]interface{}{
+				"any": cond.Match.Values,
+			},
+		})
+	}
+
+	filter := map[string]interface{}{}
+	if len(shouldConditions) > 0 {
+		filter["should"] = shouldConditions
+	}
+
+	searchReq := pkgQdrant.SearchRequest{
+		Vector:      dummyVector,
+		Limit:       opt.Limit,
+		WithPayload: true,
+		Filter:      filter,
+	}
+
+	resp, err := r.client.SearchPoints(ctx, r.collectionName, searchReq)
+	if err != nil {
+		r.l.Errorf(ctx, "qdrant repository: failed to search with filter: %v", err)
+		return nil, fmt.Errorf("failed to search with filter: %w", err)
+	}
+
+	results := make([]repository.SearchResult, 0, len(resp.Result))
+	for _, scored := range resp.Result {
+		memoIDRaw, exists := scored.Payload["memo_id"]
+		if !exists {
+			continue
+		}
+		memoID, ok := memoIDRaw.(string)
+		if !ok {
+			continue
+		}
+		results = append(results, repository.SearchResult{
+			MemoID:  memoID,
+			Score:   scored.Score,
+			Payload: scored.Payload,
+		})
+	}
+
+	r.l.Infof(ctx, "qdrant repository: found %d results using filter", len(results))
 	return results, nil
 }
 
@@ -236,4 +293,27 @@ func stripMarkdownCodeBlocks(text string) string {
 	// Remove code blocks: ```language\n...\n``` or ```\n...\n```
 	re := regexp.MustCompile("(?s)```[a-z]*\\n.*?\\n```")
 	return re.ReplaceAllString(text, "")
+}
+
+// extractTags extracts hashtags from markdown content.
+// Matches patterns like: #repo/myproject, #pr/123, #issue/456
+func extractTags(content string) []string {
+	var tags []string
+	seen := make(map[string]bool)
+
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		re := regexp.MustCompile(`#[a-zA-Z0-9_/]+`)
+		matches := re.FindAllString(line, -1)
+
+		for _, tag := range matches {
+			if !seen[tag] {
+				tags = append(tags, tag)
+				seen[tag] = true
+			}
+		}
+	}
+
+	return tags
 }

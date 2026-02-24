@@ -8,8 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/automation"
+	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task"
+	"autonomous-task-management/internal/task/repository"
 	pkgLog "autonomous-task-management/pkg/log"
 	pkgResponse "autonomous-task-management/pkg/response"
 	pkgTelegram "autonomous-task-management/pkg/telegram"
@@ -20,6 +23,9 @@ type handler struct {
 	uc           task.UseCase
 	bot          *pkgTelegram.Bot
 	orchestrator *orchestrator.Orchestrator
+	automationUC automation.UseCase
+	checklistSvc checklist.Service
+	memosRepo    repository.MemosRepository
 }
 
 // HandleWebhook is the Gin handler for incoming Telegram webhook updates.
@@ -81,6 +87,20 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 		// Intelligent agent mode (Phase 3 Advanced)
 		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/ask"))
 		return h.handleAgentOrchestrator(ctx, sc, query, msg.Chat.ID)
+
+	case strings.HasPrefix(msg.Text, "/progress "):
+		taskID := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/progress"))
+		return h.handleProgress(ctx, sc, taskID, msg.Chat.ID)
+
+	case strings.HasPrefix(msg.Text, "/complete "):
+		taskID := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/complete"))
+		return h.handleComplete(ctx, sc, taskID, msg.Chat.ID)
+
+	case strings.HasPrefix(msg.Text, "/check "):
+		return h.handleCheckItem(ctx, sc, msg.Text, msg.Chat.ID, true)
+
+	case strings.HasPrefix(msg.Text, "/uncheck "):
+		return h.handleCheckItem(ctx, sc, msg.Text, msg.Chat.ID, false)
 
 	default:
 		// Default: Create task
@@ -182,6 +202,126 @@ func (h *handler) handleAgentOrchestrator(ctx context.Context, sc model.Scope, q
 	}
 
 	return h.bot.SendMessageWithMode(chatID, answer, "Markdown")
+}
+
+// handleProgress shows checklist progress
+func (h *handler) handleProgress(ctx context.Context, sc model.Scope, taskID string, chatID int64) error {
+	if taskID == "" {
+		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập task ID.\n\nVí dụ: `/progress abc123`")
+	}
+
+	h.bot.SendMessage(chatID, "📊 Đang kiểm tra tiến độ...")
+
+	task, err := h.memosRepo.GetTask(ctx, taskID)
+	if err != nil {
+		h.l.Errorf(ctx, "Failed to get task: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thể lấy tiến độ. Vui lòng kiểm tra task ID.")
+	}
+
+	stats := h.checklistSvc.GetStats(task.Content)
+	checkboxes := h.checklistSvc.ParseCheckboxes(task.Content)
+
+	// Format response
+	var response strings.Builder
+	response.WriteString(fmt.Sprintf("📊 **Tiến độ Task: %s**\n\n", taskID))
+	response.WriteString(fmt.Sprintf("✅ Hoàn thành: %d/%d (%.0f%%)\n", stats.Completed, stats.Total, stats.Progress))
+	response.WriteString(fmt.Sprintf("⏳ Còn lại: %d\n\n", stats.Pending))
+
+	if len(checkboxes) > 0 {
+		response.WriteString("**Chi tiết:**\n")
+		for i, item := range checkboxes {
+			checkMark := "☐"
+			if item.Checked {
+				checkMark = "☑"
+			}
+			response.WriteString(fmt.Sprintf("%d. %s %s\n", i+1, checkMark, item.Text))
+		}
+	}
+
+	return h.bot.SendMessageWithMode(chatID, response.String(), "Markdown")
+}
+
+// handleComplete marks all checkboxes as complete
+func (h *handler) handleComplete(ctx context.Context, sc model.Scope, taskID string, chatID int64) error {
+	if taskID == "" {
+		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập task ID.\n\nVí dụ: `/complete abc123`")
+	}
+
+	h.bot.SendMessage(chatID, "✅ Đang đánh dấu hoàn thành...")
+
+	task, err := h.memosRepo.GetTask(ctx, taskID)
+	if err != nil {
+		h.l.Errorf(ctx, "Failed to get task: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thể đánh dấu. Vui lòng kiểm tra task ID.")
+	}
+
+	content := h.checklistSvc.UpdateAllCheckboxes(task.Content, true)
+
+	if err := h.memosRepo.UpdateTask(ctx, taskID, content); err != nil {
+		h.l.Errorf(ctx, "Failed to complete task: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thể hoàn thành task. Vui lòng thử lại.")
+	}
+
+	return h.bot.SendMessage(chatID, fmt.Sprintf("✅ Đã đánh dấu toàn bộ checklist hoàn thành: %s", taskID))
+}
+
+// handleCheckItem checks/unchecks specific checklist item
+func (h *handler) handleCheckItem(ctx context.Context, sc model.Scope, text string, chatID int64, checked bool) error {
+	// Parse command: /check <task_id> <item_text>
+	parts := strings.SplitN(text, " ", 3)
+	if len(parts) < 3 {
+		action := "check"
+		if !checked {
+			action = "uncheck"
+		}
+		return h.bot.SendMessage(chatID, fmt.Sprintf("❌ Vui lòng nhập đầy đủ.\n\nVí dụ: `/%s abc123 Write tests`", action))
+	}
+
+	taskID := strings.TrimSpace(parts[1])
+	itemText := strings.TrimSpace(parts[2])
+
+	actionStr := "checking"
+	if !checked {
+		actionStr = "unchecking"
+	}
+	h.bot.SendMessage(chatID, fmt.Sprintf("⏳ Đang %s...", actionStr))
+
+	task, err := h.memosRepo.GetTask(ctx, taskID)
+	if err != nil {
+		h.l.Errorf(ctx, "Failed to get task: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thấy task. Vui lòng thử lại.")
+	}
+
+	output, err := h.checklistSvc.UpdateCheckbox(ctx, checklist.UpdateCheckboxInput{
+		Content:      task.Content,
+		CheckboxText: itemText,
+		Checked:      checked,
+	})
+	if err != nil {
+		h.l.Errorf(ctx, "Failed to update item: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thể cập nhật. Vui lòng thử lại.")
+	}
+
+	if !output.Updated {
+		return h.bot.SendMessage(chatID, fmt.Sprintf("❌ Không tìm thấy checkbox với text: %q", itemText))
+	}
+
+	if err := h.memosRepo.UpdateTask(ctx, taskID, output.Content); err != nil {
+		h.l.Errorf(ctx, "Failed to complete task check item: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Không thể hoàn thành check task. Vui lòng thử lại.")
+	}
+
+	emoji := "☑"
+	if !checked {
+		emoji = "☐"
+	}
+
+	warningMsg := ""
+	if output.Count > 1 {
+		warningMsg = fmt.Sprintf("\n\n⚠️ Lưu ý: %d checkboxes được cập nhật. Nếu không đúng ý, hãy gõ text cụ thể hơn.", output.Count)
+	}
+
+	return h.bot.SendMessage(chatID, fmt.Sprintf("%s Đã cập nhật %d checkbox(es) matching %q%s", emoji, output.Count, itemText, warningMsg))
 }
 
 // handleStart shows welcome message with all modes.

@@ -12,6 +12,8 @@ import (
 	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/internal/agent/orchestrator"
 	"autonomous-task-management/internal/agent/tools"
+	"autonomous-task-management/internal/automation"
+	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/httpserver"
 	"autonomous-task-management/internal/sync"
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
@@ -19,6 +21,7 @@ import (
 	memosRepo "autonomous-task-management/internal/task/repository/memos"
 	qdrantRepo "autonomous-task-management/internal/task/repository/qdrant"
 	"autonomous-task-management/internal/task/usecase"
+	"autonomous-task-management/internal/webhook"
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/gcalendar"
 	"autonomous-task-management/pkg/gemini"
@@ -59,6 +62,7 @@ func main() {
 	// 3. Phase 2 & 3: Domain initialization
 	var telegramHandler tgDelivery.Handler
 	var webhookHandler sync.Handler
+	var gitWebhookHandler *webhook.Handler
 
 	if cfg.Telegram.BotToken != "" && cfg.Gemini.APIKey != "" && cfg.Memos.AccessToken != "" {
 		logger.Info(ctx, "Initializing Phase 2 components...")
@@ -146,8 +150,31 @@ func main() {
 
 		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger)
 
+		// Checklist Service
+		checklistSvc := checklist.New()
+
+		// Automation UseCase
+		automationUC := automation.New(taskRepo, vectorRepoInterface, checklistSvc, logger)
+
+		// Webhook Handler
+		if cfg.Webhook.Enabled {
+			webhookSecurityConfig := webhook.SecurityConfig{
+				Secret:          cfg.Webhook.Secret,
+				AllowedIPs:      cfg.Webhook.AllowedIPs,
+				RateLimitPerMin: cfg.Webhook.RateLimitPerMin,
+			}
+			gitWebhookHandler = webhook.NewHandler(automationUC, webhookSecurityConfig, logger)
+			logger.Info(ctx, "Git webhook handler initialized")
+		}
+
+		// Tool Registry Phase 4 Additions
+		toolRegistry.Register(tools.NewGetChecklistProgressTool(taskRepo, checklistSvc, logger))
+		if vectorRepoInterface != nil {
+			toolRegistry.Register(tools.NewUpdateChecklistItemTool(taskRepo, vectorRepoInterface, checklistSvc, logger))
+		}
+
 		// Telegram Delivery handler
-		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator)
+		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator, automationUC, checklistSvc, taskRepo)
 
 		// Webhook Sync handler
 		if vectorRepoInterface != nil {
@@ -181,12 +208,13 @@ func main() {
 
 	// 4. HTTP Server
 	httpServer, err := httpserver.New(logger, httpserver.Config{
-		Logger:          logger,
-		Port:            cfg.HTTPServer.Port,
-		Mode:            cfg.HTTPServer.Mode,
-		Environment:     cfg.Environment.Name,
-		TelegramHandler: telegramHandler,
-		WebhookHandler:  webhookHandler,
+		Logger:            logger,
+		Port:              cfg.HTTPServer.Port,
+		Mode:              cfg.HTTPServer.Mode,
+		Environment:       cfg.Environment.Name,
+		TelegramHandler:   telegramHandler,
+		WebhookHandler:    webhookHandler,
+		GitWebhookHandler: gitWebhookHandler,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize HTTP server: ", err)

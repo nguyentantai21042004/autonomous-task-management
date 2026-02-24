@@ -12,20 +12,37 @@ type MemosRepository interface {
 	CreateTasksBatch(ctx context.Context, opts []CreateTaskOptions) ([]model.Task, error)
 	GetTask(ctx context.Context, id string) (model.Task, error)
 	ListTasks(ctx context.Context, opt ListTasksOptions) ([]model.Task, error)
+	UpdateTask(ctx context.Context, id string, content string) error
 }
 
 // VectorRepository handles vector operations (Qdrant).
 type VectorRepository interface {
 	EmbedTask(ctx context.Context, task model.Task) error
 	SearchTasks(ctx context.Context, opt SearchTasksOptions) ([]SearchResult, error)
+	SearchTasksWithFilter(ctx context.Context, opt SearchTasksOptions) ([]SearchResult, error)
 	DeleteTask(ctx context.Context, taskID string) error
 }
 
 // SearchTasksOptions defines search parameters.
 type SearchTasksOptions struct {
-	Query string   // Natural language query
-	Limit int      // Top-K results
-	Tags  []string // Filter by tags (optional)
+	Query  string   // Natural language query
+	Limit  int      // Top-K results
+	Tags   []string // Filter by tags (optional)
+	Filter PayloadFilter
+}
+
+// PayloadFilter represents Qdrant filter condition structure
+type PayloadFilter struct {
+	Should []Condition
+}
+
+type Condition struct {
+	Key   string
+	Match MatchAny
+}
+
+type MatchAny struct {
+	Values []string
 }
 
 // SearchResult represents a semantic search result.

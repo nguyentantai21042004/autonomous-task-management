@@ -60,6 +60,21 @@ func (r *implRepository) CreateTasksBatch(ctx context.Context, opts []repository
 	return tasks, nil
 }
 
+func (r *implRepository) UpdateTask(ctx context.Context, id string, content string) error {
+	req := UpdateMemoRequest{
+		Content:    content,
+		UpdateMask: "content",
+	}
+
+	_, err := r.client.UpdateMemo(ctx, id, req)
+	if err != nil {
+		r.l.Errorf(ctx, "memos repository: failed to update task %s: %v", id, err)
+		return err
+	}
+
+	return nil
+}
+
 func (r *implRepository) GetTask(ctx context.Context, id string) (model.Task, error) {
 	memo, err := r.client.GetMemo(ctx, id)
 	if err != nil {

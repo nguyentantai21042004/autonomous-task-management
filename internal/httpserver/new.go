@@ -25,6 +25,12 @@ type HTTPServer struct {
 	webhookHandler interface {
 		HandleMemosWebhook(c *gin.Context)
 	}
+
+	// Phase 4: Git webhooks
+	gitWebhookHandler interface {
+		HandleGitHubWebhook(c *gin.Context)
+		HandleGitLabWebhook(c *gin.Context)
+	}
 }
 
 // Config is the dependency bag passed to New().
@@ -41,6 +47,12 @@ type Config struct {
 	WebhookHandler interface {
 		HandleMemosWebhook(c *gin.Context)
 	}
+
+	// Phase 4: Git webhooks
+	GitWebhookHandler interface {
+		HandleGitHubWebhook(c *gin.Context)
+		HandleGitLabWebhook(c *gin.Context)
+	}
 }
 
 // New creates a new HTTPServer instance.
@@ -48,13 +60,14 @@ func New(logger log.Logger, cfg Config) (*HTTPServer, error) {
 	gin.SetMode(cfg.Mode)
 
 	srv := &HTTPServer{
-		l:               logger,
-		gin:             gin.Default(),
-		port:            cfg.Port,
-		mode:            cfg.Mode,
-		environment:     cfg.Environment,
-		telegramHandler: cfg.TelegramHandler,
-		webhookHandler:  cfg.WebhookHandler,
+		l:                 logger,
+		gin:               gin.Default(),
+		port:              cfg.Port,
+		mode:              cfg.Mode,
+		environment:       cfg.Environment,
+		telegramHandler:   cfg.TelegramHandler,
+		webhookHandler:    cfg.WebhookHandler,
+		gitWebhookHandler: cfg.GitWebhookHandler,
 	}
 
 	if err := srv.validate(); err != nil {
