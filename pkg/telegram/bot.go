@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 // Bot is the Telegram Bot API client.
@@ -58,6 +60,11 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 
 // SendMessageWithMode sends a message with optional parse mode (e.g. "Markdown").
 func (b *Bot) SendMessageWithMode(chatID int64, text string, parseMode string) error {
+	// HOTFIX 3: Sanitize markdown before sending to prevent Telegram API 400 errors
+	if parseMode == "Markdown" || parseMode == "MarkdownV2" {
+		text = removeInvalidMarkdown(text)
+	}
+
 	url := fmt.Sprintf("%s/sendMessage", b.apiURL)
 	payload := SendMessageRequest{
 		ChatID:    chatID,
@@ -82,4 +89,32 @@ func (b *Bot) SendMessageWithMode(chatID int64, text string, parseMode string) e
 	}
 
 	return nil
+}
+
+// removeInvalidMarkdown removes unclosed markdown tags to prevent Telegram API errors
+func removeInvalidMarkdown(text string) string {
+	// Remove unclosed bold
+	boldCount := strings.Count(text, "**")
+	if boldCount%2 != 0 {
+		text = strings.ReplaceAll(text, "**", "")
+	}
+
+	// Remove unclosed italic
+	italicCount := strings.Count(text, "*")
+	if italicCount%2 != 0 {
+		text = strings.ReplaceAll(text, "*", "")
+	}
+
+	// Remove unclosed links [text](url)
+	openBracket := strings.Count(text, "[")
+	closeBracket := strings.Count(text, "]")
+	openParen := strings.Count(text, "(")
+	closeParen := strings.Count(text, ")")
+
+	if openBracket != closeBracket || openParen != closeParen {
+		// Remove all markdown links if unbalanced
+		text = regexp.MustCompile(`\[([^\]]*)\]\(([^\)]*)\)`).ReplaceAllString(text, "$1")
+	}
+
+	return text
 }

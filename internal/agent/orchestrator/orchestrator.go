@@ -72,24 +72,42 @@ func (o *Orchestrator) ProcessQuery(ctx context.Context, userID string, query st
 		loc = time.UTC
 	}
 	currentTime := time.Now().In(loc)
-	dateContext := fmt.Sprintf(
-		"Hôm nay là %s, ngày %s. Timezone: %s.",
+
+	// HOTFIX 2: Calculate week boundaries (Monday-Sunday)
+	weekday := int(currentTime.Weekday())
+	if weekday == 0 { // Sunday
+		weekday = 7
+	}
+	weekStart := currentTime.AddDate(0, 0, -(weekday - 1)) // Monday
+	weekEnd := weekStart.AddDate(0, 0, 6)                  // Sunday
+	tomorrow := currentTime.AddDate(0, 0, 1)
+
+	// HOTFIX 2: Hard inject temporal context into user query (don't rely on SystemInstruction)
+	timeContext := fmt.Sprintf(
+		"\n\n[SYSTEM CONTEXT - Thông tin thời gian hiện tại:"+
+			"\n- Hôm nay: %s (%s)"+
+			"\n- Tuần này: từ %s đến %s"+
+			"\n- Ngày mai: %s"+
+			"\n\nQUY TẮC QUAN TRỌNG:"+
+			"\n1. Nếu user hỏi về 'tuần này', hãy TỰ ĐỘNG gọi tool với start_date='%s' và end_date='%s'"+
+			"\n2. Nếu user hỏi về 'ngày mai', dùng date='%s'"+
+			"\n3. KHÔNG BAO GIỜ hỏi ngược lại user về ngày tháng cụ thể"+
+			"\n4. Format ngày LUÔN LUÔN là YYYY-MM-DD]",
+		currentTime.Format("2006-01-02"),
 		currentTime.Weekday().String(),
-		currentTime.Format("02/01/2006 15:04:05"),
-		currentTime.Location().String(),
+		weekStart.Format("2006-01-02"),
+		weekEnd.Format("2006-01-02"),
+		tomorrow.Format("2006-01-02"),
+		weekStart.Format("2006-01-02"),
+		weekEnd.Format("2006-01-02"),
+		tomorrow.Format("2006-01-02"),
 	)
+
+	// Inject time context at end of query
+	enhancedQuery := query + timeContext
 
 	systemPrompt := `Bạn là một trợ lý quản lý công việc thiết kế bởi Agentic.
 Nhiệm vụ của bạn là tư vấn, giải đáp lịch trình và hỗ trợ người dùng tạo task.
-
-LUÔN LUÔN ghi nhớ thông tin thời gian sau để nội suy các mốc thời gian tương đối:
-` + dateContext + `
-
-QUAN TRỌNG - Xử lý thời gian tương đối:
-- Khi người dùng hỏi về "tuần này", "ngày mai", "tháng sau", hãy TỰ ĐỘNG TÍNH TOÁN ngày cụ thể dựa trên thông tin trên.
-- KHÔNG BAO GIỜ hỏi ngược lại người dùng về ngày tháng cụ thể.
-- Khi gọi tool check_calendar, LUÔN LUÔN truyền start_date và end_date đã tính toán sẵn theo format YYYY-MM-DD.
-- Ví dụ: Nếu hôm nay là Monday 24/02/2026 và user hỏi "lịch tuần này", hãy gọi check_calendar với start_date="2026-02-24" và end_date="2026-03-02".
 
 Nếu người dùng hỏi về khả năng hoặc chức năng của bạn, hãy giải thích ngắn gọn rằng bạn có thể:
 - Lên lịch và tạo công việc (cả hàng loạt)
@@ -101,8 +119,8 @@ Hãy luôn thân thiện, xưng hô là "mình" hoặc "trợ lý".`
 
 	session := o.getSession(userID)
 
-	// Build current user message
-	userMessage := gemini.Content{Role: "user", Parts: []gemini.Part{{Text: query}}}
+	// Build current user message with enhanced query
+	userMessage := gemini.Content{Role: "user", Parts: []gemini.Part{{Text: enhancedQuery}}}
 
 	// Create request with history
 	contents := make([]gemini.Content, 0, len(session.Messages)+1)

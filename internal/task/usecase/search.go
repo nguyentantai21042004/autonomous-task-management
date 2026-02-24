@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task"
@@ -49,10 +50,30 @@ func (uc *implUseCase) Search(ctx context.Context, sc model.Scope, input task.Se
 
 	// Fetch full task details from Memos
 	results := make([]task.SearchResultItem, 0, len(searchResults))
+	zombieVectors := make([]string, 0) // HOTFIX 4: Track zombie vectors for cleanup
+
 	for _, sr := range searchResults {
 		// Fetch from Memos
 		memoTask, err := uc.repo.GetTask(ctx, sr.MemoID)
 		if err != nil {
+			// HOTFIX 4: Self-healing - auto cleanup zombie vectors
+			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+				uc.l.Warnf(ctx, "Search: Task %s deleted in Memos. Self-healing: removing from Qdrant", sr.MemoID)
+				zombieVectors = append(zombieVectors, sr.MemoID)
+
+				// Async cleanup (don't block search)
+				go func(memoID string) {
+					cleanupCtx := context.Background()
+					if err := uc.vectorRepo.DeleteTask(cleanupCtx, memoID); err != nil {
+						uc.l.Errorf(cleanupCtx, "Self-healing: Failed to cleanup zombie vector %s: %v", memoID, err)
+					} else {
+						uc.l.Infof(cleanupCtx, "Self-healing: Successfully cleaned up zombie vector %s", memoID)
+					}
+				}(sr.MemoID)
+
+				continue
+			}
+
 			uc.l.Warnf(ctx, "Search: failed to fetch task %s from Memos: %v", sr.MemoID, err)
 			continue
 		}
@@ -65,7 +86,12 @@ func (uc *implUseCase) Search(ctx context.Context, sc model.Scope, input task.Se
 		})
 	}
 
-	uc.l.Infof(ctx, "Search: found %d results", len(results))
+	// HOTFIX 4: Log self-healing stats
+	if len(zombieVectors) > 0 {
+		uc.l.Infof(ctx, "Search: Self-healing cleaned up %d zombie vectors: %v", len(zombieVectors), zombieVectors)
+	}
+
+	uc.l.Infof(ctx, "Search: found %d results (filtered from %d raw results)", len(results), len(searchResults))
 
 	return task.SearchOutput{
 		Results: results,

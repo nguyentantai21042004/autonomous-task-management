@@ -326,13 +326,17 @@ func TestOrchestrator_ProcessQuery_HistoryLimit(t *testing.T) {
 
 func TestOrchestrator_ProcessQuery_TemporalContext(t *testing.T) {
 	registry := agent.NewToolRegistry()
-	var capturedSystemPrompt string
+	var capturedUserQuery string // HOTFIX 2: Capture user query to verify temporal context injection
 
 	llmServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var reqBody gemini.GenerateRequest
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err == nil {
-			if reqBody.SystemInstruction != nil && len(reqBody.SystemInstruction.Parts) > 0 {
-				capturedSystemPrompt = reqBody.SystemInstruction.Parts[0].Text
+			// HOTFIX 2: Capture user query (last content in the request)
+			if len(reqBody.Contents) > 0 {
+				lastContent := reqBody.Contents[len(reqBody.Contents)-1]
+				if len(lastContent.Parts) > 0 {
+					capturedUserQuery = lastContent.Parts[0].Text
+				}
 			}
 		}
 
@@ -351,23 +355,25 @@ func TestOrchestrator_ProcessQuery_TemporalContext(t *testing.T) {
 	l := &mockLogger{}
 
 	t.Run("ValidTimezone", func(t *testing.T) {
-		capturedSystemPrompt = ""
+		capturedUserQuery = ""
 		o := New(llm, registry, l, "Asia/Ho_Chi_Minh")
 		_, _ = o.ProcessQuery(context.Background(), "user_tz1", "hi")
-		if !strings.Contains(capturedSystemPrompt, "Asia/Ho_Chi_Minh") {
-			t.Errorf("expected system prompt to contain timezone string, got: %s", capturedSystemPrompt)
+		// HOTFIX 2: Temporal context is now injected into user query, not system prompt
+		if !strings.Contains(capturedUserQuery, "SYSTEM CONTEXT") {
+			t.Errorf("expected user query to contain temporal context, got: %s", capturedUserQuery)
 		}
-		if !strings.Contains(capturedSystemPrompt, "Hôm nay là ") {
-			t.Errorf("expected system prompt to contain current date, got: %s", capturedSystemPrompt)
+		if !strings.Contains(capturedUserQuery, "Hôm nay:") {
+			t.Errorf("expected user query to contain current date, got: %s", capturedUserQuery)
 		}
 	})
 
 	t.Run("InvalidTimezone_FallbackToUTC", func(t *testing.T) {
-		capturedSystemPrompt = ""
+		capturedUserQuery = ""
 		o := New(llm, registry, l, "Invalid/Timezone")
 		_, _ = o.ProcessQuery(context.Background(), "user_tz2", "hi")
-		if !strings.Contains(capturedSystemPrompt, "UTC") {
-			t.Errorf("expected system prompt to fallback to UTC timezone string, got: %s", capturedSystemPrompt)
+		// HOTFIX 2: Should fallback to UTC and inject into user query
+		if !strings.Contains(capturedUserQuery, "SYSTEM CONTEXT") {
+			t.Errorf("expected user query to contain temporal context (UTC fallback), got: %s", capturedUserQuery)
 		}
 	})
 }

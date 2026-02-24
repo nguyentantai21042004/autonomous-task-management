@@ -126,7 +126,8 @@ func (h *handler) handleCreateTask(ctx context.Context, sc model.Scope, msg *pkg
 
 	output, err := h.uc.CreateBulk(ctx, sc, input)
 	if err != nil {
-		if errors.Is(err, task.ErrNoTasksParsed) {
+		// HOTFIX 1: Check both exact match AND string contains for wrapped errors
+		if errors.Is(err, task.ErrNoTasksParsed) || strings.Contains(err.Error(), "no tasks parsed") {
 			h.l.Infof(ctx, "No tasks parsed, falling back to conversational agent for text: %s", msg.Text)
 			return h.handleAgentOrchestrator(ctx, sc, msg.Text, msg.Chat.ID)
 		}
