@@ -29,6 +29,11 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
+// SetAPIURL overrides the default Gemini API URL for testing purposes.
+func (c *Client) SetAPIURL(url string) {
+	c.apiURL = url
+}
+
 // GenerateContent sends a content generation request to the Gemini API.
 func (c *Client) GenerateContent(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
 	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", c.apiURL, c.model, c.apiKey)

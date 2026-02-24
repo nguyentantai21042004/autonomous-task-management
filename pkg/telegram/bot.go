@@ -24,6 +24,11 @@ func NewBot(token string) *Bot {
 	}
 }
 
+// SetAPIURL overrides the default Telegram API URL for testing purposes.
+func (b *Bot) SetAPIURL(url string) {
+	b.apiURL = url
+}
+
 // SetWebhook registers the webhook URL with Telegram.
 func (b *Bot) SetWebhook(webhookURL string) error {
 	url := fmt.Sprintf("%s/setWebhook", b.apiURL)

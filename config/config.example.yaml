@@ -16,6 +16,7 @@ memos:
   url: "http://your-memos-instance:5230"
   api_version: "v1"
   access_token: "" # Set via env: MEMOS_ACCESS_TOKEN
+  external_url: "http://localhost:5230" # URL for user-facing links (localhost for local, or public domain for production)
 
 # Qdrant Configuration
 qdrant:

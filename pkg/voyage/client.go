@@ -41,6 +41,12 @@ func (c *Client) WithModel(model string) *Client {
 	return c
 }
 
+// WithBaseURL overrides the default Voyage API base URL.
+func (c *Client) WithBaseURL(baseURL string) *Client {
+	c.baseURL = baseURL
+	return c
+}
+
 // Embed generates embeddings for the given texts.
 func (c *Client) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {

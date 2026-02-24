@@ -48,6 +48,7 @@ type MemosConfig struct {
 	URL         string
 	APIVersion  string
 	AccessToken string
+	ExternalURL string // URL for generating user-facing links (e.g., http://localhost:5230)
 }
 
 type QdrantConfig struct {
@@ -117,11 +118,16 @@ func Load() (*Config, error) {
 	cfg.Memos.URL = viper.GetString("memos.url")
 	cfg.Memos.APIVersion = viper.GetString("memos.api_version")
 	cfg.Memos.AccessToken = viper.GetString("memos.access_token")
+	cfg.Memos.ExternalURL = viper.GetString("memos.external_url")
 	if memosURL := viper.GetString("memos_url"); memosURL != "" {
 		cfg.Memos.URL = memosURL
 	}
 	if memosToken := viper.GetString("memos_access_token"); memosToken != "" {
 		cfg.Memos.AccessToken = memosToken
+	}
+	// If external URL not set, default to internal URL
+	if cfg.Memos.ExternalURL == "" {
+		cfg.Memos.ExternalURL = cfg.Memos.URL
 	}
 
 	cfg.Qdrant.URL = viper.GetString("qdrant.url")

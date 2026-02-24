@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task"
@@ -59,14 +60,29 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 	}
 
 	// Step 3: Build prompt
+	loc, err := time.LoadLocation(uc.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	currentTime := time.Now().In(loc)
+	dateContext := fmt.Sprintf(
+		"Hôm nay là %s, ngày %s. Timezone: %s.",
+		currentTime.Weekday().String(),
+		currentTime.Format("02/01/2006 15:04:05"),
+		currentTime.Location().String(),
+	)
+
 	prompt := fmt.Sprintf(`%s
 
-Nhiệm vụ: Trả lời câu hỏi sau dựa trên ngữ cảnh được cung cấp.
-- Nếu ngữ cảnh không có thông tin, hãy nói rõ là không biết.
-- Luôn đính kèm link task nếu có trích dẫn.
-- Trả lời bằng tiếng Việt, ngắn gọn và rõ ràng.
+Thời gian hiện tại của hệ thống: %s
 
-Câu hỏi: "%s"`, contextBuilder.String(), input.Query)
+Nhiệm vụ: Trả lời câu hỏi sau dựa trên ngữ cảnh được cung cấp.
+- Phân tích và đối chiếu các mốc thời gian (ví dụ: ngày mai, tuần sau) dựa trên Thời gian hiện tại.
+- Nếu ngữ cảnh không có đề cập thông tin để trả lời, tuyệt đối không bịa ra nội dung, hãy nói rõ là không biết.
+- Luôn đính kèm link phần mềm (MemoURL) ở mỗi tác vụ khi trích dẫn.
+- Trả lời bằng tiếng Việt, ngắn gọn và mạch lạc.
+
+Câu hỏi: "%s"`, contextBuilder.String(), dateContext, input.Query)
 
 	// Step 4: Call LLM
 	req := gemini.GenerateRequest{

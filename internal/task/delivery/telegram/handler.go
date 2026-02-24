@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -102,6 +103,9 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 	case strings.HasPrefix(msg.Text, "/uncheck "):
 		return h.handleCheckItem(ctx, sc, msg.Text, msg.Chat.ID, false)
 
+	case msg.Text == "/reset":
+		return h.handleReset(ctx, sc, msg.Chat.ID)
+
 	default:
 		// Default: Create task
 		return h.handleCreateTask(ctx, sc, msg)
@@ -122,6 +126,10 @@ func (h *handler) handleCreateTask(ctx context.Context, sc model.Scope, msg *pkg
 
 	output, err := h.uc.CreateBulk(ctx, sc, input)
 	if err != nil {
+		if errors.Is(err, task.ErrNoTasksParsed) {
+			h.l.Infof(ctx, "No tasks parsed, falling back to conversational agent for text: %s", msg.Text)
+			return h.handleAgentOrchestrator(ctx, sc, msg.Text, msg.Chat.ID)
+		}
 		h.l.Errorf(ctx, "telegram handler: CreateBulk failed: %v", err)
 		return h.bot.SendMessage(msg.Chat.ID, fmt.Sprintf("Không thể xử lý yêu cầu: %v", err))
 	}
@@ -186,22 +194,25 @@ func (h *handler) handleSearch(ctx context.Context, sc model.Scope, query string
 	return h.bot.SendMessageWithMode(chatID, response.String(), "Markdown")
 }
 
-// handleAgentOrchestrator uses intelligent agent with tools.
+// handleAgentOrchestrator forwards the input to the intelligent ReAct agent.
 func (h *handler) handleAgentOrchestrator(ctx context.Context, sc model.Scope, query string, chatID int64) error {
+	// Notify user that the agent is thinking
+	if err := h.bot.SendMessage(chatID, "🧠 Trợ lý đang suy nghĩ..."); err != nil {
+		h.l.Warnf(ctx, "telegram handler: failed to send ack message: %v", err)
+	}
+
 	if query == "" {
 		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập câu hỏi.\n\nVí dụ: `/ask Tôi có meeting nào vào thứ 2 không?`")
 	}
 
-	h.bot.SendMessage(chatID, "🧠 Agent đang suy nghĩ...")
-
-	// Call orchestrator (agent will decide which tools to use)
-	answer, err := h.orchestrator.ProcessQuery(ctx, query)
+	userID := fmt.Sprintf("%d", chatID)
+	result, err := h.orchestrator.ProcessQuery(ctx, userID, query)
 	if err != nil {
-		h.l.Errorf(ctx, "Agent failed: %v", err)
-		return h.bot.SendMessage(chatID, "❌ Lỗi hệ thống Agent. Vui lòng thử lại.")
+		h.l.Errorf(ctx, "Agent error: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Rất tiếc, đã có lỗi xảy ra khi trợ lý xử lý yêu cầu của bạn.")
 	}
 
-	return h.bot.SendMessageWithMode(chatID, answer, "Markdown")
+	return h.bot.SendMessageWithMode(chatID, result, "Markdown")
 }
 
 // handleProgress shows checklist progress
@@ -322,6 +333,12 @@ func (h *handler) handleCheckItem(ctx context.Context, sc model.Scope, text stri
 	}
 
 	return h.bot.SendMessage(chatID, fmt.Sprintf("%s Đã cập nhật %d checkbox(es) matching %q%s", emoji, output.Count, itemText, warningMsg))
+}
+
+// handleReset clears the session memory for the current user.
+func (h *handler) handleReset(ctx context.Context, sc model.Scope, chatID int64) error {
+	h.orchestrator.ClearSession(sc.UserID)
+	return h.bot.SendMessage(chatID, "✅ Đã xóa lịch sử hội thoại. Bắt đầu lại từ đầu!")
 }
 
 // handleStart shows welcome message with all modes.

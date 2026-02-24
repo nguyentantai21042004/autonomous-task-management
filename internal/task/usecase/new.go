@@ -6,12 +6,18 @@ import (
 	"autonomous-task-management/pkg/gcalendar"
 	"autonomous-task-management/pkg/gemini"
 	pkgLog "autonomous-task-management/pkg/log"
+	"context"
 )
+
+// CalendarClient abstracts the Google Calendar API.
+type CalendarClient interface {
+	CreateEvent(ctx context.Context, req gcalendar.CreateEventRequest) (*gcalendar.Event, error)
+}
 
 type implUseCase struct {
 	l          pkgLog.Logger
 	llm        *gemini.Client
-	calendar   *gcalendar.Client
+	calendar   CalendarClient
 	repo       repository.MemosRepository
 	vectorRepo repository.VectorRepository
 	dateMath   *datemath.Parser
@@ -23,7 +29,7 @@ type implUseCase struct {
 func New(
 	l pkgLog.Logger,
 	llm *gemini.Client,
-	calendar *gcalendar.Client,
+	calendar CalendarClient,
 	repo repository.MemosRepository,
 	vectorRepo repository.VectorRepository,
 	dateMath *datemath.Parser,

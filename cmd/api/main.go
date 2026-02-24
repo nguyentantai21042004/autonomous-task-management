@@ -86,7 +86,7 @@ func main() {
 
 		// Memos repository
 		memosClient := memosRepo.NewClient(cfg.Memos.URL, cfg.Memos.AccessToken)
-		taskRepo := memosRepo.New(memosClient, cfg.Memos.URL, logger)
+		taskRepo := memosRepo.New(memosClient, cfg.Memos.ExternalURL, logger)
 
 		// Google Calendar client (optional)
 		var calendarClient *gcalendar.Client
@@ -139,7 +139,7 @@ func main() {
 		}
 
 		// Task UseCase
-		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.URL)
+		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.ExternalURL)
 
 		// Agent Tool Registry & Orchestrator
 		toolRegistry := agent.NewToolRegistry()
@@ -148,7 +148,7 @@ func main() {
 			toolRegistry.Register(tools.NewCheckCalendarTool(calendarClient, logger))
 		}
 
-		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger)
+		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger, cfg.Gemini.Timezone)
 
 		// Checklist Service
 		checklistSvc := checklist.New()

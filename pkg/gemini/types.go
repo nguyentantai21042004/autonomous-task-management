@@ -2,6 +2,7 @@ package gemini
 
 // GenerateRequest is the top-level request body for Gemini API.
 type GenerateRequest struct {
+	SystemInstruction *Content          `json:"system_instruction,omitempty"`
 	Contents         []Content         `json:"contents"`
 	Tools            []Tool            `json:"tools,omitempty"` // Added for function calling
 	GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`

@@ -11,12 +11,17 @@ import (
 	pkgLog "autonomous-task-management/pkg/log"
 )
 
+// CalendarClient abstract Google Calendar API for mocking
+type CalendarClient interface {
+	ListEvents(ctx context.Context, req gcalendar.ListEventsRequest) ([]gcalendar.Event, error)
+}
+
 type CheckCalendarTool struct {
-	calendar *gcalendar.Client
+	calendar CalendarClient
 	l        pkgLog.Logger
 }
 
-func NewCheckCalendarTool(calendar *gcalendar.Client, l pkgLog.Logger) *CheckCalendarTool {
+func NewCheckCalendarTool(calendar CalendarClient, l pkgLog.Logger) *CheckCalendarTool {
 	return &CheckCalendarTool{
 		calendar: calendar,
 		l:        l,
