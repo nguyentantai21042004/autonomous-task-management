@@ -1,12 +1,12 @@
-version: "3.8"
+name: autonomous-task-management
 
 services:
   backend:
     build:
-      context: .
+      context: ../../
       dockerfile: cmd/api/Dockerfile.dev
     volumes:
-      - .:/app
+      - ../../:/app
       - /app/vendor # Exclude vendor from mount
     environment:
       - AIR_ENABLED=true

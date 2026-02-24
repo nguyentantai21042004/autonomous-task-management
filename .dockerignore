@@ -6,7 +6,6 @@
 # Documentation
 *.md
 !README.md
-docs/
 
 # IDE
 .vscode/
