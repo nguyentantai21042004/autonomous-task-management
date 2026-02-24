@@ -13,4 +13,7 @@ type UseCase interface {
 
 	// Search performs semantic search on tasks.
 	Search(ctx context.Context, sc model.Scope, input SearchInput) (SearchOutput, error)
+
+	// AnswerQuery handles questions and synthesizes intelligence via RAG contextualization.
+	AnswerQuery(ctx context.Context, sc model.Scope, input QueryInput) (QueryOutput, error)
 }

@@ -3,8 +3,6 @@ package response
 import (
 	"encoding/json"
 	"time"
-
-	"autonomous-task-management/pkg/errors"
 )
 
 // Resp is the standard JSON response body.
@@ -14,9 +12,6 @@ type Resp struct {
 	Data      any    `json:"data,omitempty"`
 	Errors    any    `json:"errors,omitempty"`
 }
-
-// ErrorMapping maps errors to HTTPError for ErrorWithMap.
-type ErrorMapping map[error]*errors.HTTPError
 
 // Date is a date that marshals as DateFormat.
 type Date time.Time

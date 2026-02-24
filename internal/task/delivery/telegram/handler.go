@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"autonomous-task-management/internal/agent/orchestrator"
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task"
 	pkgLog "autonomous-task-management/pkg/log"
@@ -15,9 +16,10 @@ import (
 )
 
 type handler struct {
-	l   pkgLog.Logger
-	uc  task.UseCase
-	bot *pkgTelegram.Bot
+	l            pkgLog.Logger
+	uc           task.UseCase
+	bot          *pkgTelegram.Bot
+	orchestrator *orchestrator.Orchestrator
 }
 
 // HandleWebhook is the Gin handler for incoming Telegram webhook updates.
@@ -60,45 +62,30 @@ func (h *handler) HandleWebhook(c *gin.Context) {
 
 // processMessage handles a single Telegram message.
 func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) error {
-	if msg.Text == "" {
-		return nil
-	}
+	sc := model.Scope{UserID: fmt.Sprintf("telegram_%d", msg.From.ID)}
 
-	// Handle built-in commands
-	if msg.Text == "/start" {
-		return h.bot.SendMessage(msg.Chat.ID, "Chào mừng đến với Autonomous Task Management!\n\n"+
-			"Bạn có thể:\n"+
-			"- Tạo task: gửi mô tả công việc (mặc định)\n"+
-			"- Tìm task: dùng lệnh /search <query>\n"+
-			"- Ví dụ: /search task SMAP đang block")
-	}
+	// Handle commands
+	switch {
+	case msg.Text == "/start":
+		return h.handleStart(ctx, msg.Chat.ID)
 
-	if msg.Text == "/help" {
-		return h.bot.SendMessage(msg.Chat.ID, "📖 Hướng dẫn sử dụng:\n\n"+
-			"**Tạo task:**\n"+
-			"Finish SMAP report by tomorrow\n"+
-			"Review code today p1\n"+
-			"Tìm hiểu cách tích hợp VNPay (sẽ tạo task, KHÔNG search)\n\n"+
-			"**Tìm task:**\n"+
-			"/search task SMAP đang block\n"+
-			"/search ahamove high priority\n"+
-			"/search tasks due this week")
-	}
+	case msg.Text == "/help":
+		return h.handleHelp(ctx, msg.Chat.ID)
 
-	// Build scope from Telegram user
-	sc := model.Scope{
-		UserID: fmt.Sprintf("telegram_%d", msg.From.ID),
-	}
+	case strings.HasPrefix(msg.Text, "/search "):
+		// Fast semantic search (Phase 3 Basic)
+		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/search"))
+		return h.handleSearch(ctx, sc, query, msg.Chat.ID)
 
-	// CRITICAL FIX: Use explicit command instead of regex intent detection
-	// Problem: "Tìm hiểu cách tích hợp VNPay" would be detected as search intent
-	// Solution: Use /search command for explicit search, default to create task
-	if strings.HasPrefix(msg.Text, "/search ") {
-		return h.handleSearch(ctx, sc, msg)
-	}
+	case strings.HasPrefix(msg.Text, "/ask "):
+		// Intelligent agent mode (Phase 3 Advanced)
+		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/ask"))
+		return h.handleAgentOrchestrator(ctx, sc, query, msg.Chat.ID)
 
-	// Default: create task (safer than regex intent detection)
-	return h.handleCreateTask(ctx, sc, msg)
+	default:
+		// Default: Create task
+		return h.handleCreateTask(ctx, sc, msg)
+	}
 }
 
 // handleCreateTask processes requests to create tasks.
@@ -139,39 +126,115 @@ func (h *handler) handleCreateTask(ctx context.Context, sc model.Scope, msg *pkg
 	return h.bot.SendMessageWithMode(msg.Chat.ID, reply, "Markdown")
 }
 
-// handleSearch processes search requests.
-func (h *handler) handleSearch(ctx context.Context, sc model.Scope, msg *pkgTelegram.Message) error {
-	// Extract query (remove /search command)
-	query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/search"))
-
-	input := task.SearchInput{
-		Query: query,
-		Limit: 5, // Top 5 results
+// handleSearch performs fast semantic search (existing functionality).
+func (h *handler) handleSearch(ctx context.Context, sc model.Scope, query string, chatID int64) error {
+	if query == "" {
+		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập từ khóa tìm kiếm.\n\nVí dụ: `/search meeting tomorrow`")
 	}
 
-	output, err := h.uc.Search(ctx, sc, input)
+	h.bot.SendMessage(chatID, "🔍 Đang tìm kiếm...")
+
+	// Use existing search functionality
+	searchInput := task.SearchInput{Query: query, Limit: 5}
+	result, err := h.uc.Search(ctx, sc, searchInput)
 	if err != nil {
 		h.l.Errorf(ctx, "Search failed: %v", err)
-		return h.bot.SendMessage(msg.Chat.ID, "Có lỗi khi tìm kiếm. Vui lòng thử lại.")
+		return h.bot.SendMessage(chatID, "❌ Lỗi tìm kiếm. Vui lòng thử lại.")
 	}
 
-	if output.Count == 0 {
-		return h.bot.SendMessage(msg.Chat.ID, "Không tìm thấy task nào phù hợp.")
+	if len(result.Results) == 0 {
+		return h.bot.SendMessage(chatID, "🤷‍♂️ Không tìm thấy task nào phù hợp.")
 	}
 
 	// Format results
-	response := fmt.Sprintf("🔍 Tìm thấy %d task:\n\n", output.Count)
-	for i, result := range output.Results {
-		// Extract title from content (first line)
-		title := extractTitle(result.Content)
-		score := int(result.Score * 100)
+	var response strings.Builder
+	response.WriteString(fmt.Sprintf("🎯 Tìm thấy %d task:\n\n", len(result.Results)))
 
-		response += fmt.Sprintf("%d. %s\n", i+1, title)
-		response += fmt.Sprintf("   📊 Độ phù hợp: %d%%\n", score)
-		response += fmt.Sprintf("   🔗 [Xem chi tiết](%s)\n\n", result.MemoURL)
+	for i, taskResult := range result.Results {
+		title := extractTitle(taskResult.Content)
+		response.WriteString(fmt.Sprintf("**%d. [%s](%s)**\n", i+1, title, taskResult.MemoURL))
+		response.WriteString(fmt.Sprintf("🎯 %.0f%%\n", taskResult.Score*100))
+
+		// Show preview (first 100 chars)
+		preview := taskResult.Content
+		if len(preview) > 100 {
+			preview = preview[:100] + "..."
+		}
+		response.WriteString(fmt.Sprintf("💭 %s\n\n", preview))
 	}
 
-	return h.bot.SendMessageWithMode(msg.Chat.ID, response, "Markdown")
+	return h.bot.SendMessageWithMode(chatID, response.String(), "Markdown")
+}
+
+// handleAgentOrchestrator uses intelligent agent with tools.
+func (h *handler) handleAgentOrchestrator(ctx context.Context, sc model.Scope, query string, chatID int64) error {
+	if query == "" {
+		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập câu hỏi.\n\nVí dụ: `/ask Tôi có meeting nào vào thứ 2 không?`")
+	}
+
+	h.bot.SendMessage(chatID, "🧠 Agent đang suy nghĩ...")
+
+	// Call orchestrator (agent will decide which tools to use)
+	answer, err := h.orchestrator.ProcessQuery(ctx, query)
+	if err != nil {
+		h.l.Errorf(ctx, "Agent failed: %v", err)
+		return h.bot.SendMessage(chatID, "❌ Lỗi hệ thống Agent. Vui lòng thử lại.")
+	}
+
+	return h.bot.SendMessageWithMode(chatID, answer, "Markdown")
+}
+
+// handleStart shows welcome message with all modes.
+func (h *handler) handleStart(ctx context.Context, chatID int64) error {
+	message := `👋 **Chào mừng đến với Task Management Bot!**
+
+🎯 **3 chế độ sử dụng:**
+
+**1. Tạo Task (Mặc định)**
+Gửi tin nhắn bình thường để tạo task mới.
+*Ví dụ: "Meeting với team lúc 2pm ngày mai"*
+
+**2. Tìm kiếm nhanh**
+/search [từ khóa] - Tìm task theo từ khóa
+*Ví dụ: /search meeting tomorrow*
+
+**3. Trợ lý thông minh**
+/ask [câu hỏi] - Agent tự động tìm kiếm và phân tích
+*Ví dụ: /ask Tôi có meeting nào vào thứ 2 không?*
+
+Gõ /help để xem hướng dẫn chi tiết.`
+
+	return h.bot.SendMessageWithMode(chatID, message, "Markdown")
+}
+
+// handleHelp shows detailed usage instructions.
+func (h *handler) handleHelp(ctx context.Context, chatID int64) error {
+	message := `📖 **Hướng dẫn sử dụng**
+
+**🆕 Tạo Task**
+Gửi tin nhắn bình thường:
+• "Họp team lúc 10am ngày mai"
+• "Deadline dự án ABC vào 15/3"
+• "Gọi điện cho khách hàng XYZ"
+
+**🔍 Tìm kiếm nhanh**
+/search [từ khóa]
+• /search meeting - Tìm tất cả meeting
+• /search deadline march - Tìm deadline tháng 3
+• /search client call - Tìm cuộc gọi khách hàng
+
+**🧠 Trợ lý thông minh**
+/ask [câu hỏi]
+• /ask Tôi có meeting nào tuần này?
+• /ask Deadline nào gần nhất?
+• /ask Tóm tắt công việc hôm nay
+
+**💡 Mẹo:**
+• Agent mode (/ask) thông minh hơn nhưng chậm hơn
+• Search mode (/search) nhanh hơn cho truy vấn đơn giản
+• Tạo task trực tiếp bằng tin nhắn thường`
+
+	return h.bot.SendMessageWithMode(chatID, message, "Markdown")
 }
 
 // extractTitle extracts the first line from markdown content.

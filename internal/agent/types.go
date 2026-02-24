@@ -1,6 +1,9 @@
 package agent
 
-import "context"
+import (
+	"autonomous-task-management/pkg/gemini"
+	"context"
+)
 
 // Tool represents an agent tool that can be called by LLM.
 type Tool interface {
@@ -50,21 +53,14 @@ func (r *ToolRegistry) List() []Tool {
 }
 
 // ToFunctionDefinitions converts tools to Gemini function calling format.
-func (r *ToolRegistry) ToFunctionDefinitions() []FunctionDefinition {
-	defs := make([]FunctionDefinition, 0, len(r.tools))
+func (r *ToolRegistry) ToFunctionDefinitions() []gemini.Tool {
+	defs := make([]gemini.FunctionDeclaration, 0, len(r.tools))
 	for _, tool := range r.tools {
-		defs = append(defs, FunctionDefinition{
+		defs = append(defs, gemini.FunctionDeclaration{
 			Name:        tool.Name(),
 			Description: tool.Description(),
 			Parameters:  tool.Parameters(),
 		})
 	}
-	return defs
-}
-
-// FunctionDefinition is the schema for Gemini function calling.
-type FunctionDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	return []gemini.Tool{{FunctionDeclarations: defs}}
 }

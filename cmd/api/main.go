@@ -9,7 +9,11 @@ import (
 
 	"autonomous-task-management/config"
 	_ "autonomous-task-management/docs" // Swagger docs
+	"autonomous-task-management/internal/agent"
+	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/agent/tools"
 	"autonomous-task-management/internal/httpserver"
+	"autonomous-task-management/internal/sync"
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
 	"autonomous-task-management/internal/task/repository"
 	memosRepo "autonomous-task-management/internal/task/repository/memos"
@@ -52,8 +56,9 @@ func main() {
 	logger.Infof(ctx, "Environment: %s", cfg.Environment.Name)
 	logger.Infof(ctx, "Memos URL: %s", cfg.Memos.URL)
 
-	// 3. Phase 2: Task domain
+	// 3. Phase 2 & 3: Domain initialization
 	var telegramHandler tgDelivery.Handler
+	var webhookHandler sync.Handler
 
 	if cfg.Telegram.BotToken != "" && cfg.Gemini.APIKey != "" && cfg.Memos.AccessToken != "" {
 		logger.Info(ctx, "Initializing Phase 2 components...")
@@ -132,8 +137,22 @@ func main() {
 		// Task UseCase
 		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.URL)
 
+		// Agent Tool Registry & Orchestrator
+		toolRegistry := agent.NewToolRegistry()
+		toolRegistry.Register(tools.NewSearchTasksTool(taskUC))
+		if calendarClient != nil {
+			toolRegistry.Register(tools.NewCheckCalendarTool(calendarClient, logger))
+		}
+
+		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger)
+
 		// Telegram Delivery handler
-		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot)
+		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator)
+
+		// Webhook Sync handler
+		if vectorRepoInterface != nil {
+			webhookHandler = sync.NewWebhookHandler(taskRepo, vectorRepoInterface, logger)
+		}
 
 		// Register webhook: auto-detect ngrok or fallback to manual config
 		webhookURL := cfg.Telegram.WebhookURL
@@ -167,6 +186,7 @@ func main() {
 		Mode:            cfg.HTTPServer.Mode,
 		Environment:     cfg.Environment.Name,
 		TelegramHandler: telegramHandler,
+		WebhookHandler:  webhookHandler,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize HTTP server: ", err)

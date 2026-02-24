@@ -20,6 +20,11 @@ type HTTPServer struct {
 
 	// Phase 2: Task domain
 	telegramHandler tgDelivery.Handler
+
+	// Phase 3: Webhook sync
+	webhookHandler interface {
+		HandleMemosWebhook(c *gin.Context)
+	}
 }
 
 // Config is the dependency bag passed to New().
@@ -31,6 +36,11 @@ type Config struct {
 
 	// Phase 2: Task domain
 	TelegramHandler tgDelivery.Handler
+
+	// Phase 3: Webhook sync
+	WebhookHandler interface {
+		HandleMemosWebhook(c *gin.Context)
+	}
 }
 
 // New creates a new HTTPServer instance.
@@ -44,6 +54,7 @@ func New(logger log.Logger, cfg Config) (*HTTPServer, error) {
 		mode:            cfg.Mode,
 		environment:     cfg.Environment,
 		telegramHandler: cfg.TelegramHandler,
+		webhookHandler:  cfg.WebhookHandler,
 	}
 
 	if err := srv.validate(); err != nil {

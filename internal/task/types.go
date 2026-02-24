@@ -1,5 +1,7 @@
 package task
 
+import "autonomous-task-management/internal/task/repository"
+
 // CreateBulkInput is the input for bulk task creation.
 // UserID is stored in models.Scope, not here (per convention fixes).
 type CreateBulkInput struct {
@@ -40,4 +42,16 @@ type SearchOutput struct {
 type CreateBulkOutput struct {
 	Tasks     []CreatedTask
 	TaskCount int
+}
+
+// QueryInput is the input for RAG-based question answering.
+type QueryInput struct {
+	Query string // Natural language question
+}
+
+// QueryOutput is the result of RAG-based question answering.
+type QueryOutput struct {
+	Answer      string                    // LLM-generated answer
+	SourceTasks []repository.SearchResult // Source tasks used
+	SourceCount int                       // Number of sources
 }

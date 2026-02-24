@@ -3,17 +3,45 @@ package gemini
 // GenerateRequest is the top-level request body for Gemini API.
 type GenerateRequest struct {
 	Contents         []Content         `json:"contents"`
+	Tools            []Tool            `json:"tools,omitempty"` // Added for function calling
 	GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`
+}
+
+// Tool represents a collection of function declarations.
+type Tool struct {
+	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations,omitempty"`
+}
+
+// FunctionDeclaration defines a function that the model can call.
+type FunctionDeclaration struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema format
 }
 
 // Content wraps a list of Part objects to form a message.
 type Content struct {
+	Role  string `json:"role,omitempty"` // Added for multi-turn conversations
 	Parts []Part `json:"parts"`
 }
 
-// Part holds a text segment for a content message.
+// Part holds a text segment or a function call for a content message.
 type Part struct {
-	Text string `json:"text"`
+	Text             string            `json:"text,omitempty"`
+	FunctionCall     *FunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *FunctionResponse `json:"functionResponse,omitempty"`
+}
+
+// FunctionCall represents a model's request to call a function.
+type FunctionCall struct {
+	Name string                 `json:"name"`
+	Args map[string]interface{} `json:"args"`
+}
+
+// FunctionResponse represents the result of a function call executed by the client.
+type FunctionResponse struct {
+	Name     string      `json:"name"`
+	Response interface{} `json:"response"`
 }
 
 // GenerationConfig holds optional generation settings.

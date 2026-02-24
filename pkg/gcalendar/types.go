@@ -20,4 +20,13 @@ type Event struct {
 	HtmlLink    string
 	StartTime   time.Time
 	EndTime     time.Time
+	Location    string
+}
+
+// ListEventsRequest is the input for listing Google Calendar events.
+type ListEventsRequest struct {
+	CalendarID string
+	TimeMin    time.Time
+	TimeMax    time.Time
+	MaxResults int64
 }

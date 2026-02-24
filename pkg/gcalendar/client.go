@@ -125,3 +125,61 @@ func (c *Client) CreateEvent(ctx context.Context, req CreateEventRequest) (*Even
 		EndTime:     req.EndTime,
 	}, nil
 }
+
+// ListEvents retrieves events from Google Calendar within a time range.
+func (c *Client) ListEvents(ctx context.Context, req ListEventsRequest) ([]Event, error) {
+	calendarID := req.CalendarID
+	if calendarID == "" {
+		calendarID = "primary"
+	}
+
+	maxResults := req.MaxResults
+	if maxResults <= 0 {
+		maxResults = 100 // Default limit
+	}
+
+	call := c.service.Events.List(calendarID).
+		Context(ctx).
+		TimeMin(req.TimeMin.Format(time.RFC3339)).
+		TimeMax(req.TimeMax.Format(time.RFC3339)).
+		MaxResults(maxResults).
+		SingleEvents(true).
+		OrderBy("startTime")
+
+	eventsResp, err := call.Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list calendar events: %w", err)
+	}
+
+	events := make([]Event, 0, len(eventsResp.Items))
+	for _, item := range eventsResp.Items {
+		// Parse start time
+		var startTime time.Time
+		if item.Start.DateTime != "" {
+			startTime, _ = time.Parse(time.RFC3339, item.Start.DateTime)
+		} else if item.Start.Date != "" {
+			// All-day event
+			startTime, _ = time.Parse("2006-01-02", item.Start.Date)
+		}
+
+		// Parse end time
+		var endTime time.Time
+		if item.End.DateTime != "" {
+			endTime, _ = time.Parse(time.RFC3339, item.End.DateTime)
+		} else if item.End.Date != "" {
+			endTime, _ = time.Parse("2006-01-02", item.End.Date)
+		}
+
+		events = append(events, Event{
+			ID:          item.Id,
+			Summary:     item.Summary,
+			Description: item.Description,
+			HtmlLink:    item.HtmlLink,
+			StartTime:   startTime,
+			EndTime:     endTime,
+			Location:    item.Location,
+		})
+	}
+
+	return events, nil
+}

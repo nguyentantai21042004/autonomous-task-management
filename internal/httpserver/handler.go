@@ -57,5 +57,13 @@ func (srv HTTPServer) registerDomainRoutes() error {
 		srv.l.Infof(ctx, "Telegram handler not configured, skipping webhook route")
 	}
 
+	// Phase 3: Memos webhook
+	if srv.webhookHandler != nil {
+		srv.gin.POST("/webhook/memos", srv.webhookHandler.HandleMemosWebhook)
+		srv.l.Infof(ctx, "Memos webhook route registered at POST /webhook/memos")
+	} else {
+		srv.l.Infof(ctx, "Webhook handler not configured, skipping Memos webhook route")
+	}
+
 	return nil
 }
