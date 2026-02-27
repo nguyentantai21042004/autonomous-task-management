@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"autonomous-task-management/pkg/gemini"
 )
@@ -52,6 +53,18 @@ func (r *SemanticRouter) Classify(ctx context.Context, message string, conversat
 	}
 
 	responseText := resp.Candidates[0].Content.Parts[0].Text
+
+	// Strip markdown code blocks if present (```json ... ```)
+	responseText = strings.TrimSpace(responseText)
+	if strings.HasPrefix(responseText, "```json") {
+		responseText = strings.TrimPrefix(responseText, "```json")
+		responseText = strings.TrimSuffix(responseText, "```")
+		responseText = strings.TrimSpace(responseText)
+	} else if strings.HasPrefix(responseText, "```") {
+		responseText = strings.TrimPrefix(responseText, "```")
+		responseText = strings.TrimSuffix(responseText, "```")
+		responseText = strings.TrimSpace(responseText)
+	}
 
 	// Parse JSON response
 	var output RouterOutput

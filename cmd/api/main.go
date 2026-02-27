@@ -22,6 +22,7 @@ import (
 	memosRepo "autonomous-task-management/internal/task/repository/memos"
 	qdrantRepo "autonomous-task-management/internal/task/repository/qdrant"
 	"autonomous-task-management/internal/task/usecase"
+	"autonomous-task-management/internal/test"
 	"autonomous-task-management/internal/webhook"
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/gcalendar"
@@ -64,6 +65,7 @@ func main() {
 	var telegramHandler tgDelivery.Handler
 	var webhookHandler sync.Handler
 	var gitWebhookHandler *webhook.Handler
+	var testHandler test.Handler
 
 	if cfg.Telegram.BotToken != "" && cfg.Gemini.APIKey != "" && cfg.Memos.AccessToken != "" {
 		logger.Info(ctx, "Initializing Phase 2 components...")
@@ -181,6 +183,9 @@ func main() {
 		// Telegram Delivery handler
 		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator, automationUC, checklistSvc, taskRepo, semanticRouter)
 
+		// Test handler (for E2E testing)
+		testHandler = test.New(logger, semanticRouter, agentOrchestrator)
+
 		// Webhook Sync handler
 		if vectorRepoInterface != nil {
 			webhookHandler = sync.NewWebhookHandler(taskRepo, vectorRepoInterface, logger)
@@ -220,6 +225,7 @@ func main() {
 		TelegramHandler:   telegramHandler,
 		WebhookHandler:    webhookHandler,
 		GitWebhookHandler: gitWebhookHandler,
+		TestHandler:       testHandler,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize HTTP server: ", err)

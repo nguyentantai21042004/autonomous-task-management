@@ -74,5 +74,13 @@ func (srv HTTPServer) registerDomainRoutes() error {
 		srv.l.Infof(ctx, "Git webhook handler not configured, skipping Git webhook routes")
 	}
 
+	// Test domain
+	if srv.testHandler != nil {
+		srv.gin.POST("/test/message", srv.testHandler.HandleTestMessage)
+		srv.gin.POST("/test/reset", srv.testHandler.HandleResetSession)
+		srv.gin.GET("/test/health", srv.testHandler.HandleHealthCheck)
+		srv.l.Infof(ctx, "Test routes registered at POST /test/message, POST /test/reset, GET /test/health")
+	}
+
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
+	"autonomous-task-management/internal/test"
 	"autonomous-task-management/pkg/log"
 )
 
@@ -31,6 +32,9 @@ type HTTPServer struct {
 		HandleGitHubWebhook(c *gin.Context)
 		HandleGitLabWebhook(c *gin.Context)
 	}
+
+	// Test domain
+	testHandler test.Handler
 }
 
 // Config is the dependency bag passed to New().
@@ -53,6 +57,9 @@ type Config struct {
 		HandleGitHubWebhook(c *gin.Context)
 		HandleGitLabWebhook(c *gin.Context)
 	}
+
+	// Test domain
+	TestHandler test.Handler
 }
 
 // New creates a new HTTPServer instance.
@@ -68,6 +75,7 @@ func New(logger log.Logger, cfg Config) (*HTTPServer, error) {
 		telegramHandler:   cfg.TelegramHandler,
 		webhookHandler:    cfg.WebhookHandler,
 		gitWebhookHandler: cfg.GitWebhookHandler,
+		testHandler:       cfg.TestHandler,
 	}
 
 	if err := srv.validate(); err != nil {
