@@ -515,7 +515,7 @@ Expected: Không còn warning 404 (vectors đã bị xóa)
 ### Phase 4: Documentation (30 phút)
 
 - [ ] Update `README.md` - ghi chú về các fix
-- [ ] Update `documents/phase-5-verification-plan.md` - đánh dấu hoàn thành
+- [ ] Update `documents/version-1.0/phase-5-verification-plan.md` - đánh dấu hoàn thành
 - [ ] Tạo `CHANGELOG.md` - ghi lại các thay đổi
 - [ ] Commit với message: `hotfix: Phase 5 production bugs (conversational fallback, temporal context, markdown crash, data drift)`
 

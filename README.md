@@ -97,7 +97,7 @@ Bot: Đã tự động đánh dấu hoàn thành:
 
 ## Kiến trúc kỹ thuật
 
-![System Architecture](documents/architecture.png)
+![System Architecture](documents/images/architecture.png)
 
 ### Tech Stack
 
@@ -136,7 +136,7 @@ Bot: Đã tự động đánh dấu hoàn thành:
 
 ### 1. Cấu hình API Keys
 
-Bạn cần lấy các API keys sau (hướng dẫn chi tiết trong [Configuration Guide](documents/configuration-guide.md)):
+Bạn cần lấy các API keys sau (hướng dẫn chi tiết trong [Configuration Guide](documents/guidance/configuration-guide.md)):
 
 - **Telegram Bot Token** - Giao diện chat
 - **Gemini API Key** - AI brain
@@ -146,7 +146,7 @@ Bạn cần lấy các API keys sau (hướng dẫn chi tiết trong [Configurat
 - **Ngrok Auth Token** - Webhook tunneling
 - **Webhook Secret** - Git integration security (optional)
 
-👉 **[Xem hướng dẫn lấy API keys chi tiết](documents/configuration-guide.md)**
+👉 **[Xem hướng dẫn lấy API keys chi tiết](documents/guidance/configuration-guide.md)**
 
 ### 2. Khởi động hệ thống
 
@@ -336,11 +336,12 @@ go run scripts/backfill-embeddings/main.go
 
 ## Documentation
 
-- [Configuration Guide](documents/configuration-guide.md) - Hướng dẫn lấy API keys
-- [Master Plan](documents/master-plan.md) - Kiến trúc tổng thể
-- [Phase 1-5 Plans](documents/) - Chi tiết implementation
-- [Google Calendar Setup](documents/google-calendar-setup.md) - Setup OAuth2
-- [Phase 5 Review](documents/phase-5-implementation-review-v2.md) - Test coverage & production readiness
+- [Architecture Overview](documents/architecture-overview.md) - Kiến trúc hệ thống từ high-level đến low-level
+- [Configuration Guide](documents/guidance/configuration-guide.md) - Hướng dẫn lấy API keys
+- [Master Plan](documents/version-1.0/master-plan.md) - Kiến trúc tổng thể (v1.0)
+- [Phase 1-5 Plans](documents/version-1.0/) - Chi tiết implementation các giai đoạn
+- [Google Calendar Setup](documents/version-1.0/google-calendar-setup.md) - Setup OAuth2
+- [Coding Conventions](documents/convention/) - Quy ước code cho delivery, repository, usecase
 - [Walkthrough](walkthrough.md) - Tổng quan implementation
 
 ---

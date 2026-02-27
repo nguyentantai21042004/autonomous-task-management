@@ -97,7 +97,7 @@ Bot: Automatically marked as completed:
 
 ## Technical Architecture
 
-![System Architecture](documents/architecture.png)
+![System Architecture](documents/images/architecture.png)
 
 ### Tech Stack
 
@@ -136,7 +136,7 @@ Bot: Automatically marked as completed:
 
 ### 1. API Keys configuration
 
-You will need to retrieve the following API credentials (details laid out in the [Configuration Guide](documents/configuration-guide.en.md)):
+You will need to retrieve the following API credentials (details laid out in the [Configuration Guide](documents/guidance/configuration-guide.en.md)):
 
 - **Telegram Bot Token** - Chat UI
 - **Gemini API Key** - AI brain
@@ -146,7 +146,7 @@ You will need to retrieve the following API credentials (details laid out in the
 - **Ngrok Auth Token** - Webhook tunneling
 - **Webhook Secret** - Git integration security (optional)
 
-👉 **[See detailed setup instructions here](documents/configuration-guide.en.md)**
+👉 **[See detailed setup instructions here](documents/guidance/configuration-guide.en.md)**
 
 ### 2. Bootstrapping
 
@@ -329,10 +329,12 @@ go run scripts/backfill-embeddings/main.go
 
 ## Documentation Index
 
-- [Configuration Guide](documents/configuration-guide.en.md) - API key fetching manual.
-- [Master Plan](documents/master-plan.md) - Comprehensive architectural blueprints.
-- [Phase 1-4 Plans](documents/) - Sequential roadmap outlines.
-- [Google Calendar Setup](documents/google-calendar-setup.md) - OAuth2 deployment framework.
+- [Architecture Overview](documents/architecture-overview.md) - System architecture from high-level to low-level
+- [Configuration Guide](documents/guidance/configuration-guide.en.md) - API key fetching manual
+- [Master Plan](documents/version-1.0/master-plan.md) - Comprehensive architectural blueprints (v1.0)
+- [Phase 1-5 Plans](documents/version-1.0/) - Sequential roadmap outlines
+- [Google Calendar Setup](documents/version-1.0/google-calendar-setup.md) - OAuth2 deployment framework
+- [Coding Conventions](documents/convention/) - Code conventions for delivery, repository, usecase layers
 
 ---
 

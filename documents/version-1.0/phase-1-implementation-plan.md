@@ -710,7 +710,7 @@ chmod +x scripts/*.sh
 
 #### Task 1.8: Tài liệu Google Calendar Setup
 
-**File:** `documents/google-calendar-setup.md`
+**File:** `documents/version-1.0/google-calendar-setup.md`
 
 ```markdown
 ## Hướng dẫn Cấu hình Google Calendar API
@@ -863,7 +863,7 @@ AI-powered task management system with Telegram interface, Memos storage, and Go
 
 - Docker & Docker Compose
 - Telegram Bot Token (get from @BotFather)
-- Google Calendar API credentials (see `documents/google-calendar-setup.md`)
+- Google Calendar API credentials (see `documents/version-1.0/google-calendar-setup.md`)
 
 ### Setup
 
@@ -910,7 +910,7 @@ AI-powered task management system with Telegram interface, Memos storage, and Go
 2. Follow the instructions to set up your tag schema in Memos UI
 
 3. Configure Google Calendar (first time only):
-   - See `documents/google-calendar-setup.md`
+   - See `documents/version-1.0/google-calendar-setup.md`
    - Authorize when prompted
 
 ## Development
@@ -959,7 +959,7 @@ See `documents/convention/` for detailed coding conventions.
 - [x] `config/config.go` updated structs
 - [x] `cmd/api/main.go` updated với graceful shutdown
 - [x] Scripts `verify-setup.sh` và `init-memos.sh` với execute permission
-- [x] `documents/google-calendar-setup.md` updated với Service Account
+- [x] `documents/version-1.0/google-calendar-setup.md` updated với Service Account
 - [x] `.gitignore` updated
 - [x] `README.md` với hướng dẫn Quick Start
 - [x] Test: `docker compose up` chạy thành công

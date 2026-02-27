@@ -559,10 +559,11 @@ docker compose restart ngrok
 
 ## Tài liệu liên quan
 
-- [README](../README.md) - Tổng quan hệ thống
-- [Master Plan](master-plan.md) - Kiến trúc chi tiết
-- [Google Calendar Setup](google-calendar-setup.md) - OAuth2 deep dive
-- [Troubleshooting Guide](../README.md#troubleshooting) - Common issues
+- [README](../../README.md) - Tổng quan hệ thống
+- [Architecture Overview](../architecture-overview.md) - Kiến trúc chi tiết
+- [Master Plan](../version-1.0/master-plan.md) - Kiến trúc tổng thể (v1.0)
+- [Google Calendar Setup](../version-1.0/google-calendar-setup.md) - OAuth2 deep dive
+- [Troubleshooting Guide](../../README.md#troubleshooting) - Common issues
 
 ---
 
