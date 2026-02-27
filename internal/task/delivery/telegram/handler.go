@@ -12,6 +12,7 @@ import (
 	"autonomous-task-management/internal/automation"
 	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/model"
+	"autonomous-task-management/internal/router"
 	"autonomous-task-management/internal/task"
 	"autonomous-task-management/internal/task/repository"
 	pkgLog "autonomous-task-management/pkg/log"
@@ -27,6 +28,7 @@ type handler struct {
 	automationUC automation.UseCase
 	checklistSvc checklist.Service
 	memosRepo    repository.MemosRepository
+	router       router.Router // 🆕 Use interface instead of concrete type
 }
 
 // HandleWebhook is the Gin handler for incoming Telegram webhook updates.
@@ -69,45 +71,81 @@ func (h *handler) HandleWebhook(c *gin.Context) {
 
 // processMessage handles a single Telegram message.
 func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) error {
+	// Convention: Construct scope from message
 	sc := model.Scope{UserID: fmt.Sprintf("telegram_%d", msg.From.ID)}
 
-	// Handle commands
+	// Handle explicit slash commands first (backward compatibility)
+	// Convention: Simple switch-case for command routing
 	switch {
 	case msg.Text == "/start":
 		return h.handleStart(ctx, msg.Chat.ID)
-
 	case msg.Text == "/help":
 		return h.handleHelp(ctx, msg.Chat.ID)
-
+	case msg.Text == "/reset":
+		h.orchestrator.ClearSession(sc.UserID)
+		return h.bot.SendMessage(msg.Chat.ID, "✅ Đã xóa lịch sử hội thoại. Bắt đầu lại từ đầu!")
 	case strings.HasPrefix(msg.Text, "/search "):
-		// Fast semantic search (Phase 3 Basic)
 		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/search"))
 		return h.handleSearch(ctx, sc, query, msg.Chat.ID)
-
 	case strings.HasPrefix(msg.Text, "/ask "):
-		// Intelligent agent mode (Phase 3 Advanced)
 		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/ask"))
 		return h.handleAgentOrchestrator(ctx, sc, query, msg.Chat.ID)
-
 	case strings.HasPrefix(msg.Text, "/progress "):
 		taskID := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/progress"))
 		return h.handleProgress(ctx, sc, taskID, msg.Chat.ID)
-
 	case strings.HasPrefix(msg.Text, "/complete "):
 		taskID := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/complete"))
 		return h.handleComplete(ctx, sc, taskID, msg.Chat.ID)
-
 	case strings.HasPrefix(msg.Text, "/check "):
 		return h.handleCheckItem(ctx, sc, msg.Text, msg.Chat.ID, true)
-
 	case strings.HasPrefix(msg.Text, "/uncheck "):
 		return h.handleCheckItem(ctx, sc, msg.Text, msg.Chat.ID, false)
+	}
 
-	case msg.Text == "/reset":
-		return h.handleReset(ctx, sc, msg.Chat.ID)
+	// 🆕 Use Semantic Router for natural language messages
+	// Convention: Get conversation history for context
+	session := h.orchestrator.GetSession(sc.UserID)
+	history := []string{}
+	if session != nil && len(session.Messages) > 0 {
+		// Get last 3 messages (6 content items = 3 turns)
+		start := len(session.Messages) - 6
+		if start < 0 {
+			start = 0
+		}
+		for i := start; i < len(session.Messages); i++ {
+			if len(session.Messages[i].Parts) > 0 {
+				history = append(history, session.Messages[i].Parts[0].Text)
+			}
+		}
+	}
+
+	// Classify intent using router
+	// Convention: Pass context as first parameter
+	routerOutput, err := h.router.Classify(ctx, msg.Text, history)
+	if err != nil {
+		h.l.Errorf(ctx, "router: Classification failed, falling back to CONVERSATION: %v", err)
+		// 🔧 PRO-TIP #2: Fallback to CONVERSATION (safer than CREATE_TASK)
+		routerOutput.Intent = router.IntentConversation
+	}
+
+	// Route based on intent
+	// Convention: Simple switch-case, delegate to specific handlers
+	switch routerOutput.Intent {
+	case router.IntentCreateTask:
+		return h.handleCreateTask(ctx, sc, msg)
+
+	case router.IntentSearchTask:
+		return h.handleSearch(ctx, sc, msg.Text, msg.Chat.ID)
+
+	case router.IntentManageChecklist:
+		// Route to agent for intelligent handling
+		return h.handleAgentOrchestrator(ctx, sc, msg.Text, msg.Chat.ID)
+
+	case router.IntentConversation:
+		return h.handleAgentOrchestrator(ctx, sc, msg.Text, msg.Chat.ID)
 
 	default:
-		// Default: Create task
+		// Fallback to create task
 		return h.handleCreateTask(ctx, sc, msg)
 	}
 }

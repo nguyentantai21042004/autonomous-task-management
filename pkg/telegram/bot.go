@@ -53,9 +53,9 @@ func (b *Bot) SetWebhook(webhookURL string) error {
 	return nil
 }
 
-// SendMessage sends a plain text message to a Telegram chat.
+// SendMessage sends a text message to the specified chat (uses HTML mode by default)
 func (b *Bot) SendMessage(chatID int64, text string) error {
-	return b.SendMessageWithMode(chatID, text, "")
+	return b.SendMessageHTML(chatID, text)
 }
 
 // SendMessageWithMode sends a message with optional parse mode (e.g. "Markdown").
@@ -117,4 +117,54 @@ func removeInvalidMarkdown(text string) string {
 	}
 
 	return text
+}
+
+// SendMessageHTML sends message with HTML formatting (safer than MarkdownV2)
+func (b *Bot) SendMessageHTML(chatID int64, text string) error {
+	url := fmt.Sprintf("%s/sendMessage", b.apiURL)
+
+	payload := map[string]interface{}{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+
+	body, _ := json.Marshal(payload)
+	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Fallback to plain text if HTML parsing fails
+		return b.SendMessagePlain(chatID, text)
+	}
+
+	return nil
+}
+
+// SendMessagePlain sends message without any formatting
+func (b *Bot) SendMessagePlain(chatID int64, text string) error {
+	url := fmt.Sprintf("%s/sendMessage", b.apiURL)
+
+	payload := map[string]interface{}{
+		"chat_id": chatID,
+		"text":    text,
+		// No parse_mode = plain text
+	}
+
+	body, _ := json.Marshal(payload)
+	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram sendMessage API error %d: %s", resp.StatusCode, string(raw))
+	}
+
+	return nil
 }

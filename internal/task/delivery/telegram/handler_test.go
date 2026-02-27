@@ -16,6 +16,7 @@ import (
 	"autonomous-task-management/internal/agent/orchestrator"
 	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/model"
+	"autonomous-task-management/internal/router"
 	"autonomous-task-management/internal/task"
 	"autonomous-task-management/internal/task/delivery/telegram"
 	"autonomous-task-management/internal/task/repository"
@@ -108,6 +109,34 @@ func (m *mockChecklistSvc) IsFullyCompleted(content string) bool {
 	return false
 }
 
+// mockRouter implements a simple router for testing
+type mockRouter struct {
+	intent router.Intent
+}
+
+func (m *mockRouter) Classify(ctx context.Context, message string, conversationHistory []string) (router.RouterOutput, error) {
+	// Simple heuristic for testing
+	if strings.Contains(message, "Họp") || strings.Contains(message, "task") || strings.Contains(message, "Blah") {
+		return router.RouterOutput{
+			Intent:     router.IntentCreateTask,
+			Confidence: 90,
+			Reasoning:  "Test routing to CREATE_TASK",
+		}, nil
+	}
+	if strings.Contains(message, "Bạn làm được gì") {
+		return router.RouterOutput{
+			Intent:     router.IntentConversation,
+			Confidence: 90,
+			Reasoning:  "Test routing to CONVERSATION",
+		}, nil
+	}
+	return router.RouterOutput{
+		Intent:     m.intent,
+		Confidence: 90,
+		Reasoning:  "Mock routing",
+	}, nil
+}
+
 // ── Test Helpers ───────────────────────────────────────────────────────────
 
 type testEnv struct {
@@ -164,8 +193,11 @@ func newTestEnv(t *testing.T) (*testEnv, *httptest.Server, *httptest.Server) {
 	memosRepo := &mockMemosRepo{}
 	checklistSvc := &mockChecklistSvc{}
 
+	// 🆕 Use mock router for tests instead of real router
+	mockRouter := &mockRouter{intent: router.IntentCreateTask}
+
 	engine := gin.New()
-	h := telegram.New(l, muc, bot, agentOrch, nil, checklistSvc, memosRepo)
+	h := telegram.New(l, muc, bot, agentOrch, nil, checklistSvc, memosRepo, mockRouter)
 	engine.POST("/webhook/telegram", h.HandleWebhook)
 
 	return &testEnv{

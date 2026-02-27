@@ -45,10 +45,30 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("Ngữ cảnh (Các task liên quan):\n\n")
 
+	zombieVectors := make([]string, 0) // 🆕 Track zombie vectors for cleanup
+
 	for i, sr := range searchResults {
 		memoTask, err := uc.repo.GetTask(ctx, sr.MemoID)
 		if err != nil {
-			uc.l.Warnf(ctx, "Failed to fetch task %s: %v", sr.MemoID, err)
+			// 🆕 Self-healing: cleanup zombie vectors
+			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+				uc.l.Warnf(ctx, "AnswerQuery: Task %s deleted in Memos. Self-healing: removing from Qdrant", sr.MemoID)
+				zombieVectors = append(zombieVectors, sr.MemoID)
+
+				// Async cleanup (don't block RAG)
+				go func(memoID string) {
+					cleanupCtx := context.Background()
+					if err := uc.vectorRepo.DeleteTask(cleanupCtx, memoID); err != nil {
+						uc.l.Errorf(cleanupCtx, "Self-healing: Failed to cleanup zombie vector %s: %v", memoID, err)
+					} else {
+						uc.l.Infof(cleanupCtx, "Self-healing: Successfully cleaned up zombie vector %s", memoID)
+					}
+				}(sr.MemoID)
+
+				continue
+			}
+
+			uc.l.Warnf(ctx, "AnswerQuery: failed to fetch task %s: %v", sr.MemoID, err)
 			continue
 		}
 
@@ -57,6 +77,11 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 
 		contextBuilder.WriteString(fmt.Sprintf("-- Task %d (Độ phù hợp: %.0f%%, Link: %s) --\n%s\n\n",
 			i+1, sr.Score*100, memoTask.MemoURL, safeContent))
+	}
+
+	// 🆕 Log self-healing stats
+	if len(zombieVectors) > 0 {
+		uc.l.Infof(ctx, "AnswerQuery: Self-healing cleaned up %d zombie vectors", len(zombieVectors))
 	}
 
 	// Step 3: Build prompt

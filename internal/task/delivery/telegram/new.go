@@ -6,6 +6,7 @@ import (
 	"autonomous-task-management/internal/agent/orchestrator"
 	"autonomous-task-management/internal/automation"
 	"autonomous-task-management/internal/checklist"
+	"autonomous-task-management/internal/router"
 	"autonomous-task-management/internal/task"
 	"autonomous-task-management/internal/task/repository"
 	pkgLog "autonomous-task-management/pkg/log"
@@ -26,6 +27,7 @@ func New(
 	automationUC automation.UseCase,
 	checklistSvc checklist.Service,
 	memosRepo repository.MemosRepository,
+	router router.Router, // 🆕 Use interface for better testability
 ) Handler {
 	return &handler{
 		l:            l,
@@ -35,5 +37,6 @@ func New(
 		automationUC: automationUC,
 		checklistSvc: checklistSvc,
 		memosRepo:    memosRepo,
+		router:       router, // 🆕 Inject router
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"autonomous-task-management/internal/automation"
 	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/httpserver"
+	"autonomous-task-management/internal/router"
 	"autonomous-task-management/internal/sync"
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
 	"autonomous-task-management/internal/task/repository"
@@ -150,6 +151,10 @@ func main() {
 
 		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger, cfg.Gemini.Timezone)
 
+		// 🆕 Initialize Semantic Router
+		semanticRouter := router.New(geminiClient, logger)
+		logger.Info(ctx, "Semantic Router initialized")
+
 		// Checklist Service
 		checklistSvc := checklist.New()
 
@@ -174,7 +179,7 @@ func main() {
 		}
 
 		// Telegram Delivery handler
-		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator, automationUC, checklistSvc, taskRepo)
+		telegramHandler = tgDelivery.New(logger, taskUC, telegramBot, agentOrchestrator, automationUC, checklistSvc, taskRepo, semanticRouter)
 
 		// Webhook Sync handler
 		if vectorRepoInterface != nil {
