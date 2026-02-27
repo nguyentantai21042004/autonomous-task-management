@@ -11,12 +11,13 @@
 Bạn cần chuẩn bị các thông tin sau (đánh dấu [x] khi hoàn thành):
 
 - [ ] **Telegram Bot Token** - Bắt buộc (giao diện chat)
-- [ ] **Gemini API Key** - Bắt buộc (AI brain)
+- [ ] **LLM Provider API Key** - Bắt buộc (AI brain - DeepSeek primary, Gemini secondary, Qwen tertiary)
 - [ ] **Voyage AI API Key** - Bắt buộc (embeddings)
 - [ ] **Memos Access Token** - Bắt buộc (storage)
 - [ ] **Ngrok Auth Token** - Bắt buộc (webhooks)
 - [ ] **Google Calendar Credentials** - Tùy chọn (scheduling)
 - [ ] **Webhook Secret** - Tùy chọn (Git automation)
+- [ ] **LLM Provider Config** - Tùy chọn (multi-provider, fallback)
 
 ---
 
@@ -123,7 +124,7 @@ curl -H "Authorization: Bearer <YOUR_TOKEN>" \
 
 ---
 
-## 3. Gemini API Key
+## 3. LLM Provider API Key (Gemini)
 
 **Mục đích**: "Bộ não AI" - Agent orchestration, NLU, reasoning
 
@@ -447,6 +448,170 @@ Webhooks là public endpoints, bất kỳ ai cũng có thể gửi fake requests
 
 ---
 
+## 8. LLM Provider Configuration (Optional - Advanced)
+
+**Mục đích**: Cấu hình nhiều LLM providers với fallback tự động
+
+**Thời gian**: ~5 phút
+
+**Chi phí**: Tùy provider
+
+### Tại sao cần?
+
+Mặc định hệ thống dùng DeepSeek (nếu chỉ config `DEEPSEEK_API_KEY`). Nhưng bạn có thể:
+
+- **Multi-provider**: Dùng DeepSeek làm PRIMARY (rẻ hơn, nhanh hơn), Gemini làm SECONDARY, Qwen làm TERTIARY
+- **Fallback**: DeepSeek fail → tự động chuyển sang Gemini → nếu vẫn fail → chuyển sang Qwen
+- **Cost optimization**: DeepSeek rẻ nhất cho simple tasks, Gemini backup khi cần, Qwen là fallback cuối
+- **Redundancy**: Không bị downtime khi 1-2 providers lỗi
+
+### Cấu hình trong `config/config.yaml`
+
+```yaml
+llm:
+  fallback_enabled: true      # Bật fallback tự động
+  retry_attempts: 3           # Số lần retry mỗi provider
+  retry_delay: "1s"           # Delay giữa các retry
+  
+  providers:
+    # Provider 1: DeepSeek (PRIMARY - ưu tiên cao nhất)
+    - name: deepseek
+      enabled: true
+      priority: 1             # Thử TRƯỚC (primary)
+      api_key: "${DEEPSEEK_API_KEY}"
+      model: "deepseek-chat"
+      timeout: "30s"
+    
+    # Provider 2: Gemini (SECONDARY)
+    - name: gemini
+      enabled: true
+      priority: 2             # Thử SAU nếu DeepSeek fail (secondary)
+      api_key: "${GEMINI_API_KEY}"
+      model: "gemini-2.5-flash"
+      timeout: "30s"
+    
+    # Provider 3: Qwen (TERTIARY)
+    - name: qwen
+      enabled: true
+      priority: 3             # Thử CUỐI nếu cả DeepSeek và Gemini fail (tertiary)
+      api_key: "${QWEN_API_KEY}"
+      model: "qwen-turbo"
+      timeout: "30s"
+```
+
+### Lấy Qwen API Key
+
+1. **Đăng ký** tại [Alibaba Cloud DashScope](https://dashscope.console.aliyun.com/)
+
+2. **Tạo API key**:
+   - Dashboard -> **API Keys**
+   - Click **Create API Key**
+   - Copy key: `sk-...`
+
+3. **Thêm vào `.env`**:
+
+   ```bash
+   QWEN_API_KEY="sk-..."
+   ```
+
+### Các mode cấu hình
+
+#### Mode 1: Single provider (mặc định)
+
+```yaml
+# Không cần config gì, chỉ cần DEEPSEEK_API_KEY trong .env
+# Hệ thống tự tạo config cho DeepSeek
+```
+
+#### Mode 2: Multi-provider với fallback
+
+```yaml
+llm:
+  fallback_enabled: true
+  providers:
+    - name: deepseek
+      priority: 1           # PRIMARY
+      api_key: "${DEEPSEEK_API_KEY}"
+      model: "deepseek-chat"
+    - name: gemini
+      priority: 2           # SECONDARY
+      api_key: "${GEMINI_API_KEY}"
+      model: "gemini-2.5-flash"
+    - name: qwen
+      priority: 3           # TERTIARY
+      api_key: "${QWEN_API_KEY}"
+      model: "qwen-turbo"
+```
+
+#### Mode 3: Disable một provider
+
+```yaml
+llm:
+  providers:
+    - name: deepseek
+      enabled: false          # Tắt DeepSeek (không dùng PRIMARY)
+      priority: 1
+      api_key: "${DEEPSEEK_API_KEY}"
+      model: "deepseek-chat"
+    - name: gemini
+      enabled: true           # Chỉ dùng Gemini
+      priority: 2
+      api_key: "${GEMINI_API_KEY}"
+      model: "gemini-2.5-flash"
+    - name: qwen
+      enabled: true           # Và Qwen
+      priority: 3
+      api_key: "${QWEN_API_KEY}"
+      model: "qwen-turbo"
+```
+
+### Priority và Fallback
+
+- **Priority**: Số nhỏ = ưu tiên cao (1 > 2 > 3)
+- **Fallback flow**:
+  1. Thử provider priority 1 (DeepSeek - PRIMARY)
+  2. Nếu fail → retry 3 lần với delay 1s
+  3. Nếu vẫn fail → chuyển sang priority 2 (Gemini - SECONDARY)
+  4. Nếu vẫn fail → chuyển sang priority 3 (Qwen - TERTIARY)
+  5. Nếu tất cả fail → trả lỗi
+
+### Kiểm tra
+
+```bash
+# Restart để load config mới
+make restart
+
+# Check logs
+make logs
+
+# Nên thấy:
+# "LLM Provider Manager initialized" providers=3 fallback_enabled=true
+# "Provider 1: deepseek (model: deepseek-chat)"
+# "Provider 2: gemini (model: gemini-2.5-flash)"
+# "Provider 3: qwen (model: qwen-turbo)"
+```
+
+### Test fallback
+
+```bash
+# Tắt DeepSeek (PRIMARY) bằng cách set sai API key
+DEEPSEEK_API_KEY=invalid make restart
+
+# Gửi message qua Telegram
+# Logs sẽ show:
+# "LLM generation failed" provider=deepseek error="API error 401"
+# "LLM generation successful" provider=gemini fallback=true
+```
+
+### Best practices
+
+- **Development**: Dùng single provider (đơn giản, chỉ cần DEEPSEEK_API_KEY)
+- **Production**: Dùng multi-provider với fallback (reliable)
+- **Cost optimization**: DeepSeek priority 1 (PRIMARY, rẻ nhất), Gemini priority 2 (SECONDARY), Qwen priority 3 (TERTIARY)
+- **Monitoring**: Check logs để biết provider nào đang được dùng
+
+---
+
 ## Tổng kết
 
 ### File `.env` hoàn chỉnh
@@ -455,7 +620,7 @@ Webhooks là public endpoints, bất kỳ ai cũng có thể gửi fake requests
 # ===== BẮT BUỘC =====
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 MEMOS_ACCESS_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-GEMINI_API_KEY="AIzaSyA..."
+DEEPSEEK_API_KEY="sk-..."  # Primary LLM provider (khuyến nghị)
 VOYAGE_API_KEY="pa-..."
 NGROK_AUTHTOKEN=2a...
 
@@ -468,6 +633,12 @@ WEBHOOK_SECRET=a1b2c3d4e5f6...
 GEMINI_TIMEZONE="Asia/Ho_Chi_Minh"
 WEBHOOK_RATE_LIMIT_PER_MIN=60
 WEBHOOK_ALLOWED_IPS=  # Để trống = allow all
+
+# ===== LLM MULTI-PROVIDER (OPTIONAL) =====
+# Nếu muốn dùng fallback, thêm vào config.yaml
+# Xem section 8 trong guide
+GEMINI_API_KEY="AIzaSyA..."  # Optional: Google Gemini cho secondary fallback
+QWEN_API_KEY="sk-..."  # Optional: Alibaba Qwen cho tertiary fallback
 ```
 
 ### Checklist cuối cùng
@@ -531,11 +702,11 @@ curl http://localhost:4040/api/tunnels
 # Update .env và restart: make restart
 ```
 
-### Gemini rate limit
+### LLM rate limit
 
 ```bash
-# FREE tier: 15 req/min
-# Giải pháp: Upgrade to paid tier hoặc đợi 1 phút
+# FREE tier: 15 req/min (Gemini), varies by provider
+# Giải pháp: Upgrade to paid tier, dùng multi-provider fallback, hoặc đợi 1 phút
 ```
 
 ### Qdrant không tìm thấy tasks

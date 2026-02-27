@@ -1,11 +1,10 @@
 package orchestrator
 
 import (
+	"autonomous-task-management/pkg/llmprovider"
 	"context"
 	"fmt"
 	"time"
-
-	"autonomous-task-management/pkg/gemini"
 )
 
 // getSession retrieves or creates session for user
@@ -17,7 +16,7 @@ func (o *Orchestrator) getSession(userID string) *SessionMemory {
 	if !exists || time.Since(session.LastUpdated) > o.cacheTTL {
 		session = &SessionMemory{
 			UserID:      userID,
-			Messages:    []gemini.Content{},
+			Messages:    []llmprovider.Message{},
 			LastUpdated: time.Now(),
 		}
 		o.sessionCache[userID] = session
@@ -72,35 +71,39 @@ func (o *Orchestrator) ProcessQuery(ctx context.Context, userID string, query st
 	session := o.getSession(userID)
 
 	// Build current user message with enhanced query
-	userMessage := gemini.Content{Role: "user", Parts: []gemini.Part{{Text: enhancedQuery}}}
+	userMessage := llmprovider.Message{
+		Role:  "user",
+		Parts: []llmprovider.Part{{Text: enhancedQuery}},
+	}
 
 	// Create request with history
-	contents := make([]gemini.Content, 0, len(session.Messages)+1)
-	contents = append(contents, session.Messages...)
-	contents = append(contents, userMessage)
+	messages := make([]llmprovider.Message, 0, len(session.Messages)+1)
+	messages = append(messages, session.Messages...)
+	messages = append(messages, userMessage)
 
-	req := gemini.GenerateRequest{
-		SystemInstruction: &gemini.Content{
-			Parts: []gemini.Part{{Text: SystemPromptAgent}},
+	req := llmprovider.Request{
+		SystemInstruction: &llmprovider.Message{
+			Parts: []llmprovider.Part{{Text: SystemPromptAgent}},
 		},
-		Contents: contents,
-		Tools:    o.registry.ToFunctionDefinitions(),
+		Messages: messages,
+		Tools:    o.convertToolsToNormalized(),
 	}
 
 	for step := 0; step < MaxAgentSteps; step++ {
 		o.l.Infof(ctx, "%s: "+LogMsgAgentStep, LogPrefixProcessQuery, step+1, MaxAgentSteps)
 
 		// 1. Reason: Ask LLM what to do
-		resp, err := o.llm.GenerateContent(ctx, req)
+		resp, err := o.llm.GenerateContent(ctx, &req)
 		if err != nil {
 			return "", fmt.Errorf("%s: "+ErrMsgAgentLLMError+": %w", LogPrefixProcessQuery, step, err)
 		}
 
-		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		// Check if response has content
+		if len(resp.Content.Parts) == 0 {
 			return "", fmt.Errorf("%s: %s", LogPrefixProcessQuery, ErrMsgEmptyLLMResponse)
 		}
 
-		part := resp.Candidates[0].Content.Parts[0]
+		part := resp.Content.Parts[0]
 
 		// 2. Check if LLM wants to call a tool
 		if part.FunctionCall == nil {
@@ -110,7 +113,10 @@ func (o *Orchestrator) ProcessQuery(ctx context.Context, userID string, query st
 			// Save to session history
 			o.cacheMutex.Lock()
 			session.Messages = append(session.Messages, userMessage)
-			session.Messages = append(session.Messages, gemini.Content{Role: "model", Parts: []gemini.Part{{Text: part.Text}}})
+			session.Messages = append(session.Messages, llmprovider.Message{
+				Role:  "assistant",
+				Parts: []llmprovider.Part{{Text: part.Text}},
+			})
 
 			// Limit history to last N messages
 			if len(session.Messages) > MaxSessionHistory {
@@ -144,14 +150,14 @@ func (o *Orchestrator) ProcessQuery(ctx context.Context, userID string, query st
 		}
 
 		// 4. Observe: Add tool result to current ReAct session memory
-		req.Contents = append(req.Contents, gemini.Content{
-			Role:  "model",
-			Parts: []gemini.Part{{FunctionCall: part.FunctionCall}},
+		req.Messages = append(req.Messages, llmprovider.Message{
+			Role:  "assistant",
+			Parts: []llmprovider.Part{{FunctionCall: part.FunctionCall}},
 		})
-		req.Contents = append(req.Contents, gemini.Content{
+		req.Messages = append(req.Messages, llmprovider.Message{
 			Role: "function",
-			Parts: []gemini.Part{{
-				FunctionResponse: &gemini.FunctionResponse{
+			Parts: []llmprovider.Part{{
+				FunctionResponse: &llmprovider.FunctionResponse{
 					Name:     toolName,
 					Response: toolResult,
 				},
@@ -167,4 +173,18 @@ func (o *Orchestrator) ProcessQuery(ctx context.Context, userID string, query st
 // GetSession exposes session for router to access conversation history
 func (o *Orchestrator) GetSession(userID string) *SessionMemory {
 	return o.getSession(userID)
+}
+
+// convertToolsToNormalized converts tool registry to normalized llmprovider.Tool format
+func (o *Orchestrator) convertToolsToNormalized() []llmprovider.Tool {
+	tools := o.registry.List()
+	normalized := make([]llmprovider.Tool, 0, len(tools))
+	for _, tool := range tools {
+		normalized = append(normalized, llmprovider.Tool{
+			Name:        tool.Name(),
+			Description: tool.Description(),
+			Parameters:  tool.Parameters(),
+		})
+	}
+	return normalized
 }

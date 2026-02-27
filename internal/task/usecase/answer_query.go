@@ -9,7 +9,7 @@ import (
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task"
 	"autonomous-task-management/internal/task/repository"
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 )
 
 const (
@@ -110,14 +110,17 @@ Nhiệm vụ: Trả lời câu hỏi sau dựa trên ngữ cảnh được cung 
 Câu hỏi: "%s"`, contextBuilder.String(), dateContext, input.Query)
 
 	// Step 4: Call LLM
-	req := gemini.GenerateRequest{
-		Contents: []gemini.Content{
-			{Parts: []gemini.Part{{Text: prompt}}},
+	req := &llmprovider.Request{
+		Messages: []llmprovider.Message{
+			{
+				Role: "user",
+				Parts: []llmprovider.Part{
+					{Text: prompt},
+				},
+			},
 		},
-		GenerationConfig: &gemini.GenerationConfig{
-			Temperature:     0.3, // Lower temperature for factual answers
-			MaxOutputTokens: 1024,
-		},
+		Temperature: 0.3, // Lower temperature for factual answers
+		MaxTokens:   1024,
 	}
 
 	resp, err := uc.llm.GenerateContent(ctx, req)
@@ -125,11 +128,11 @@ Câu hỏi: "%s"`, contextBuilder.String(), dateContext, input.Query)
 		return task.QueryOutput{}, fmt.Errorf("LLM failed: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	if len(resp.Content.Parts) == 0 {
 		return task.QueryOutput{}, fmt.Errorf("empty LLM response")
 	}
 
-	answerText := resp.Candidates[0].Content.Parts[0].Text
+	answerText := resp.Content.Parts[0].Text
 
 	return task.QueryOutput{
 		Answer:      answerText,

@@ -1,72 +1,145 @@
 package gemini
 
-// GenerateRequest is the top-level request body for Gemini API.
-type GenerateRequest struct {
-	SystemInstruction *Content          `json:"system_instruction,omitempty"`
-	Contents         []Content         `json:"contents"`
-	Tools            []Tool            `json:"tools,omitempty"` // Added for function calling
-	GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`
+import (
+	"fmt"
+	"net/http"
+)
+
+// Config holds Gemini client configuration
+type Config struct {
+	APIKey     string
+	Model      string
+	APIURL     string
+	HTTPClient *http.Client
 }
 
-// Tool represents a collection of function declarations.
+// Validate validates the configuration
+func (c *Config) Validate() error {
+	if c.APIKey == "" {
+		return fmt.Errorf("gemini: APIKey is required")
+	}
+	if c.Model == "" {
+		c.Model = DefaultModel
+	}
+	if c.APIURL == "" {
+		c.APIURL = DefaultAPIURL
+	}
+	if c.HTTPClient == nil {
+		c.HTTPClient = &http.Client{Timeout: DefaultTimeout}
+	}
+	return nil
+}
+
+// geminiImpl is the internal implementation of IGemini
+type geminiImpl struct {
+	apiKey     string
+	model      string
+	apiURL     string
+	httpClient *http.Client
+}
+
+// Request represents a Gemini generation request
+type Request struct {
+	SystemInstruction *Content
+	Messages          []Content
+	Tools             []Tool
+	Temperature       float64
+	MaxTokens         int
+}
+
+// Content represents a message content
+type Content struct {
+	Role  string
+	Parts []Part
+}
+
+// Part represents a message part
+type Part struct {
+	Text             string
+	FunctionCall     *FunctionCall
+	FunctionResponse *FunctionResponse
+}
+
+// Tool represents a function declaration
 type Tool struct {
-	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations,omitempty"`
+	Name        string
+	Description string
+	Parameters  map[string]interface{}
 }
 
-// FunctionDeclaration defines a function that the model can call.
-type FunctionDeclaration struct {
+// FunctionCall represents a function call request
+type FunctionCall struct {
+	Name string
+	Args map[string]interface{}
+}
+
+// FunctionResponse represents a function execution result
+type FunctionResponse struct {
+	Name     string
+	Response interface{}
+}
+
+// Response represents a Gemini generation response
+type Response struct {
+	Content Content
+	Usage   *Usage
+}
+
+// Usage tracks token consumption
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
+// Internal Gemini API types
+type geminiRequest struct {
+	SystemInstruction *geminiContent          `json:"system_instruction,omitempty"`
+	Contents          []geminiContent         `json:"contents"`
+	Tools             []geminiTool            `json:"tools,omitempty"`
+	GenerationConfig  *geminiGenerationConfig `json:"generationConfig,omitempty"`
+}
+
+type geminiTool struct {
+	FunctionDeclarations []geminiFunctionDeclaration `json:"functionDeclarations,omitempty"`
+}
+
+type geminiFunctionDeclaration struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema format
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
-// Content wraps a list of Part objects to form a message.
-type Content struct {
-	Role  string `json:"role,omitempty"` // Added for multi-turn conversations
-	Parts []Part `json:"parts"`
+type geminiContent struct {
+	Role  string       `json:"role,omitempty"`
+	Parts []geminiPart `json:"parts"`
 }
 
-// Part holds a text segment or a function call for a content message.
-type Part struct {
-	Text             string            `json:"text,omitempty"`
-	FunctionCall     *FunctionCall     `json:"functionCall,omitempty"`
-	FunctionResponse *FunctionResponse `json:"functionResponse,omitempty"`
+type geminiPart struct {
+	Text             string                  `json:"text,omitempty"`
+	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
 }
 
-// FunctionCall represents a model's request to call a function.
-type FunctionCall struct {
+type geminiFunctionCall struct {
 	Name string                 `json:"name"`
 	Args map[string]interface{} `json:"args"`
 }
 
-// FunctionResponse represents the result of a function call executed by the client.
-type FunctionResponse struct {
+type geminiFunctionResponse struct {
 	Name     string      `json:"name"`
 	Response interface{} `json:"response"`
 }
 
-// GenerationConfig holds optional generation settings.
-type GenerationConfig struct {
+type geminiGenerationConfig struct {
 	Temperature     float64 `json:"temperature,omitempty"`
 	MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
 }
 
-// GenerateResponse is the top-level response body from Gemini API.
-type GenerateResponse struct {
-	Candidates []Candidate `json:"candidates"`
+type geminiResponse struct {
+	Candidates []geminiCandidate `json:"candidates"`
 }
 
-// Candidate represents a single response candidate.
-type Candidate struct {
-	Content Content `json:"content"`
-}
-
-// ParsedTask is a task extracted from user input by the LLM.
-type ParsedTask struct {
-	Title                    string   `json:"title"`
-	Description              string   `json:"description"`
-	DueDateAbsolute          string   `json:"due_date_absolute"`
-	Priority                 string   `json:"priority"`
-	Tags                     []string `json:"tags"`
-	EstimatedDurationMinutes int      `json:"estimated_duration_minutes"`
+type geminiCandidate struct {
+	Content geminiContent `json:"content"`
 }

@@ -3,7 +3,7 @@ package router
 import (
 	"context"
 
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 	"autonomous-task-management/pkg/log"
 )
 
@@ -14,7 +14,7 @@ type Router interface {
 
 // SemanticRouter classifies user intent using LLM
 type SemanticRouter struct {
-	llm *gemini.Client
+	llm *llmprovider.Manager
 	l   log.Logger
 }
 
@@ -23,7 +23,7 @@ var _ Router = (*SemanticRouter)(nil)
 
 // New creates a new SemanticRouter
 // Convention: Factory function returns concrete type (not interface) for internal packages
-func New(llm *gemini.Client, l log.Logger) *SemanticRouter {
+func New(llm *llmprovider.Manager, l log.Logger) *SemanticRouter {
 	return &SemanticRouter{
 		llm: llm,
 		l:   l,

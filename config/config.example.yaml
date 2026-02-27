@@ -29,11 +29,6 @@ telegram:
   bot_token: "" # Set via environment variable
   webhook_url: ""
 
-# Gemini LLM Configuration
-gemini:
-  api_key: "" # Set via environment variable
-  timezone: "Asia/Ho_Chi_Minh"
-
 # Voyage AI Configuration (for embeddings)
 voyage:
   api_key: "" # Set via environment variable
@@ -42,6 +37,41 @@ voyage:
 google_calendar:
   credentials_path: "" # Set via environment variable
   calendar_id: "primary"
+
+llm:
+  # List of LLM providers (ordered by priority)
+  providers:
+    # Primary provider: DeepSeek
+    - name: deepseek
+      enabled: true
+      priority: 1
+      api_key: ${DEEPSEEK_API_KEY} # Environment variable expansion
+      base_url: https://api.deepseek.com/v1
+      model: deepseek-chat
+      timeout: 30s
+
+    # Secondary provider: Google Gemini
+    - name: gemini
+      enabled: true
+      priority: 2
+      api_key: ${GEMINI_API_KEY} # Environment variable expansion
+      model: gemini-2.5-flash
+      timeout: 30s
+
+    # Tertiary provider: Alibaba Qwen
+    - name: alibaba
+      enabled: true
+      priority: 3
+      api_key: ${ALIBABA_API_KEY} # Environment variable expansion
+      base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+      model: qwen-turbo
+      timeout: 30s
+
+  # Fallback configuration
+  fallback_enabled: true
+  retry_attempts: 3
+  retry_delay: 1s
+  max_total_timeout: 60s  # Global timeout for entire fallback chain (prevents infinite waiting)
 
 # Phase 4: Git Webhook Configuration
 webhook:

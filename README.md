@@ -109,7 +109,7 @@ Bot: Đã tự động đánh dấu hoàn thành:
 
 **AI & ML:**
 
-- **LLM**: Google Gemini 2.0 Flash (Agent orchestration, NLU)
+- **LLM**: Multi-provider support (DeepSeek primary, Gemini secondary, Qwen tertiary) (Agent orchestration, NLU)
 - **Embeddings**: Voyage AI voyage-3 (1024 dimensions, multilingual)
 - **Vector DB**: Qdrant (Semantic search, RAG)
 
@@ -139,7 +139,7 @@ Bot: Đã tự động đánh dấu hoàn thành:
 Bạn cần lấy các API keys sau (hướng dẫn chi tiết trong [Configuration Guide](documents/guidance/configuration-guide.md)):
 
 - **Telegram Bot Token** - Giao diện chat
-- **Gemini API Key** - AI brain
+- **LLM Provider API Key** - AI brain (DeepSeek primary, Gemini secondary, Qwen tertiary)
 - **Voyage AI API Key** - Embeddings
 - **Memos Access Token** - Storage
 - **Google Calendar Credentials** - Scheduling (optional)
@@ -147,6 +147,8 @@ Bạn cần lấy các API keys sau (hướng dẫn chi tiết trong [Configurat
 - **Webhook Secret** - Git integration security (optional)
 
 👉 **[Xem hướng dẫn lấy API keys chi tiết](documents/guidance/configuration-guide.md)**
+
+💡 **Multi-provider LLM**: Hệ thống hỗ trợ nhiều LLM providers với fallback tự động (DeepSeek primary, Gemini secondary, Qwen tertiary). Xem [Section 8](documents/guidance/configuration-guide.md#8-llm-provider-configuration-optional---advanced).
 
 ### 2. Khởi động hệ thống
 
@@ -251,7 +253,10 @@ AI sẽ tự tách thành 5 tasks riêng biệt với đúng thời gian!
 │   ├── webhook/         # Git webhook handlers
 │   └── httpserver/      # HTTP server & routing
 ├── pkg/                 # Shared packages
+│   ├── deepseek/       # DeepSeek LLM client
 │   ├── gemini/         # Gemini LLM client
+│   ├── qwen/           # Qwen LLM client
+│   ├── llmprovider/    # LLM provider manager
 │   ├── voyage/         # Voyage AI embeddings
 │   ├── qdrant/         # Qdrant vector DB client
 │   ├── telegram/       # Telegram bot client
@@ -381,7 +386,7 @@ Built with:
 
 - [Memos](https://github.com/usememos/memos) - Self-hosted note-taking
 - [Qdrant](https://qdrant.tech/) - Vector database
-- [Gemini](https://ai.google.dev/) - Google's LLM
+- [DeepSeek](https://www.deepseek.com/), [Gemini](https://ai.google.dev/), & [Qwen](https://www.alibabacloud.com/help/en/model-studio/developer-reference/what-is-qwen-llm) - LLM providers (DeepSeek primary, Gemini secondary, Qwen tertiary)
 - [Voyage AI](https://www.voyageai.com/) - Embeddings
 - [Gin](https://gin-gonic.com/) - Go web framework
 

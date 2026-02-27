@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"autonomous-task-management/config"
 	_ "autonomous-task-management/docs" // Swagger docs
@@ -26,7 +27,7 @@ import (
 	"autonomous-task-management/internal/webhook"
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/gcalendar"
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 	"autonomous-task-management/pkg/log"
 	pkgQdrant "autonomous-task-management/pkg/qdrant"
 	"autonomous-task-management/pkg/telegram"
@@ -61,26 +62,60 @@ func main() {
 	logger.Infof(ctx, "Environment: %s", cfg.Environment.Name)
 	logger.Infof(ctx, "Memos URL: %s", cfg.Memos.URL)
 
+	// Initialize LLM Provider Manager
+	providers, err := llmprovider.InitializeProviders(&cfg.LLM)
+	if err != nil {
+		logger.Fatalf(ctx, "Failed to initialize LLM providers: %v", err)
+	}
+
+	// Parse retry delay
+	retryDelay, parseErr := time.ParseDuration(cfg.LLM.RetryDelay)
+	if parseErr != nil {
+		logger.Warnf(ctx, "Invalid retry delay %q, using default 1s: %v", cfg.LLM.RetryDelay, parseErr)
+		retryDelay = time.Second
+	}
+
+	// Parse max total timeout
+	maxTotalTimeout, parseErr := time.ParseDuration(cfg.LLM.MaxTotalTimeout)
+	if parseErr != nil {
+		logger.Warnf(ctx, "Invalid max_total_timeout %q, using default 60s: %v", cfg.LLM.MaxTotalTimeout, parseErr)
+		maxTotalTimeout = 60 * time.Second
+	}
+
+	// Create Provider Manager
+	managerConfig := &llmprovider.Config{
+		FallbackEnabled: cfg.LLM.FallbackEnabled,
+		RetryAttempts:   cfg.LLM.RetryAttempts,
+		RetryDelay:      retryDelay,
+		MaxTotalTimeout: maxTotalTimeout,
+	}
+	llmManager := llmprovider.NewManager(providers, managerConfig, logger)
+	logger.Info(ctx, "LLM Provider Manager initialized",
+		"providers", len(providers),
+		"fallback_enabled", cfg.LLM.FallbackEnabled,
+		"retry_attempts", cfg.LLM.RetryAttempts,
+		"max_total_timeout", maxTotalTimeout,
+	)
+
+	// Log provider details
+	for i, provider := range providers {
+		logger.Infof(ctx, "  Provider %d: %s (model: %s)", i+1, provider.Name(), provider.Model())
+	}
+
 	// 3. Phase 2 & 3: Domain initialization
 	var telegramHandler tgDelivery.Handler
 	var webhookHandler sync.Handler
 	var gitWebhookHandler *webhook.Handler
 	var testHandler test.Handler
 
-	if cfg.Telegram.BotToken != "" && cfg.Gemini.APIKey != "" && cfg.Memos.AccessToken != "" {
+	if cfg.Telegram.BotToken != "" && cfg.Memos.AccessToken != "" {
 		logger.Info(ctx, "Initializing Phase 2 components...")
 
 		// Telegram Bot client
 		telegramBot := telegram.NewBot(cfg.Telegram.BotToken)
 
-		// Gemini LLM client
-		geminiClient := gemini.NewClient(cfg.Gemini.APIKey)
-
-		// DateMath parser
-		timezone := cfg.Gemini.Timezone
-		if timezone == "" {
-			timezone = "Asia/Ho_Chi_Minh"
-		}
+		// DateMath parser - get timezone from LLM config or default
+		timezone := "Asia/Ho_Chi_Minh"
 		dateMathParser, dtErr := datemath.NewParser(timezone)
 		if dtErr != nil {
 			logger.Warnf(ctx, "Invalid timezone %q, falling back to UTC: %v", timezone, dtErr)
@@ -142,7 +177,7 @@ func main() {
 		}
 
 		// Task UseCase
-		taskUC := usecase.New(logger, geminiClient, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.ExternalURL)
+		taskUC := usecase.New(logger, llmManager, calendarClient, taskRepo, vectorRepoInterface, dateMathParser, timezone, cfg.Memos.ExternalURL)
 
 		// Agent Tool Registry & Orchestrator
 		toolRegistry := agent.NewToolRegistry()
@@ -151,10 +186,9 @@ func main() {
 			toolRegistry.Register(tools.NewCheckCalendarTool(calendarClient, logger))
 		}
 
-		agentOrchestrator := orchestrator.New(geminiClient, toolRegistry, logger, cfg.Gemini.Timezone)
+		agentOrchestrator := orchestrator.New(llmManager, toolRegistry, logger, "Asia/Ho_Chi_Minh")
 
-		// 🆕 Initialize Semantic Router
-		semanticRouter := router.New(geminiClient, logger)
+		semanticRouter := router.New(llmManager, logger)
 		logger.Info(ctx, "Semantic Router initialized")
 
 		// Checklist Service

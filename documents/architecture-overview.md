@@ -26,7 +26,7 @@ Hệ thống cung cấp một **giao diện duy nhất** (Telegram) kết hợp 
 
 ### 1.3. Đặc điểm Nổi bật
 
-- **Agentic AI**: ReAct framework với tool calling (Gemini 2.5 Flash)
+- **Agentic AI**: ReAct framework với tool calling (Multi-provider LLM: Qwen primary, Gemini fallback)
 - **Semantic Search**: Vector database (Qdrant) với embeddings (Voyage AI)
 - **Markdown-native**: Lưu trữ dạng plain text, dễ backup và migrate
 - **Self-hosted**: Chạy hoàn toàn local, zero cloud dependency
@@ -88,8 +88,8 @@ Hệ thống cung cấp một **giao diện duy nhất** (Telegram) kết hợp 
 │  └──────────────┘  └──────────────┘  └──────────────────────────┘ │
 │                                                                       │
 │  ┌──────────────┐  ┌──────────────┐                                │
-│  │  Gemini API  │  │  Voyage AI   │                                │
-│  │   (LLM)      │  │ (Embeddings) │                                │
+│  │  LLM Providers│ │  Voyage AI   │                                │
+│  │ (Qwen/Gemini)│  │ (Embeddings) │                                │
 │  │              │  │              │                                │
 │  │ • Reasoning  │  │ • voyage-3   │                                │
 │  │ • Parsing    │  │ • 1024-dim   │                                │
@@ -153,11 +153,14 @@ Hệ thống cung cấp một **giao diện duy nhất** (Telegram) kết hợp 
 - Conflict detection
 - Timezone-aware scheduling
 
-**Gemini API (LLM)**
-- Model: `gemini-2.5-flash`
+**LLM Providers (DeepSeek/Gemini/Qwen)**
+- Multi-provider support with fallback
+- Primary: `deepseek-chat` (priority 1)
+- Secondary: `gemini-2.5-flash` (priority 2)
+- Tertiary: `qwen-turbo` (priority 3)
 - Function calling support
-- 1M tokens context window
-- Rate limit: 15 req/min (FREE)
+- 1M tokens context window (Gemini)
+- Rate limit: varies by provider
 
 **Voyage AI (Embeddings)**
 - Model: `voyage-3`
@@ -183,7 +186,7 @@ User: "Deadline dự án ABC vào 15/3, ước tính 4 giờ"
   ▼
 [Task UseCase] CreateBulk(rawText)
   │
-  ├─► [Gemini API] Parse natural language → JSON array
+  ├─► [LLM Provider] Parse natural language → JSON array
   │   Response: [{title: "Deadline dự án ABC", dueDate: "2026-03-15", ...}]
   │
   ├─► [DateMath Parser] Resolve relative dates → absolute timestamps
@@ -254,7 +257,7 @@ User: /ask Tôi có deadline nào trong tuần này?
   │
   ├─► [Session Memory] Load conversation history (5 turns)
   │
-  ├─► [Gemini API] GenerateContent(systemPrompt + history + query + tools)
+  ├─► [LLM Provider] GenerateContent(systemPrompt + history + query + tools)
   │   LLM thinks: "User asks about deadlines this week"
   │   LLM decides: "I need to call search_tasks tool"
   │   Response: {functionCall: {name: "search_tasks", args: {query: "deadline", ...}}}
@@ -266,7 +269,7 @@ User: /ask Tôi có deadline nào trong tuần này?
   │   │
   │   └─► Tool returns: [{title: "Deadline dự án ABC", dueDate: "2026-03-15", ...}]
   │
-  ├─► [Gemini API] GenerateContent(history + toolResult)
+  ├─► [LLM Provider] GenerateContent(history + toolResult)
   │   LLM synthesizes: "Bạn có 1 deadline trong tuần này: Dự án ABC vào 15/3"
   │   Response: {text: "Bạn có 1 deadline..."}
   │
@@ -489,10 +492,24 @@ autonomous-task-management/
 │       └── constant.go          # Constants
 │
 ├── pkg/                         # Shared libraries (reusable)
-│   ├── gemini/                  # Gemini API client
+│   ├── deepseek/                # DeepSeek LLM client
+│   │   ├── client.go            # HTTP client
+│   │   ├── types.go             # Request/Response types
+│   │   └── constant.go          # Constants
+│   ├── gemini/                  # Gemini LLM client
 │   │   ├── client.go            # HTTP client
 │   │   ├── types.go             # Request/Response types
 │   │   └── prompt.go            # System prompts
+│   ├── qwen/                    # Qwen LLM client
+│   │   ├── client.go            # HTTP client
+│   │   ├── types.go             # Request/Response types
+│   │   └── constant.go          # Constants
+│   ├── llmprovider/             # LLM provider manager
+│   │   ├── provider.go          # Provider interface
+│   │   ├── manager.go           # Multi-provider manager
+│   │   ├── adapter.go           # Provider adapters
+│   │   ├── factory.go           # Provider factory
+│   │   └── errors.go            # Error types
 │   ├── voyage/                  # Voyage AI client
 │   │   ├── client.go            # Embedding API
 │   │   └── types.go             # EmbedRequest/Response
@@ -552,7 +569,7 @@ func main() {
     logger := log.Init(cfg.Logger)
     
     // 3. Initialize external clients (pkg/)
-    geminiClient := gemini.NewClient(cfg.Gemini.APIKey)
+    llmManager := llmprovider.InitializeProviders(cfg.LLM)
     voyageClient := voyage.New(cfg.Voyage.APIKey)
     qdrantClient := qdrant.NewClient(cfg.Qdrant.URL)
     telegramBot := telegram.NewBot(cfg.Telegram.BotToken)
@@ -566,7 +583,7 @@ func main() {
     checklistSvc := checklist.NewService()
     
     // 6. Initialize use cases (internal/*/usecase/)
-    taskUC := usecase.New(memosRepo, qdrantRepo, geminiClient, calendarClient)
+    taskUC := usecase.New(memosRepo, qdrantRepo, llmManager, calendarClient)
     automationUC := automation.New(memosRepo, qdrantRepo, checklistSvc)
     
     // 7. Initialize agent (internal/agent/)
@@ -576,7 +593,7 @@ func main() {
     toolRegistry.Register(tools.NewGetChecklistProgress(checklistSvc, memosRepo))
     toolRegistry.Register(tools.NewUpdateChecklistItem(checklistSvc, memosRepo))
     
-    orchestrator := orchestrator.New(geminiClient, toolRegistry, cfg.Gemini.Timezone)
+    orchestrator := orchestrator.New(llmManager, toolRegistry, cfg.LLM.Timezone)
     
     // 8. Initialize handlers (internal/*/delivery/)
     telegramHandler := telegram.NewHandler(taskUC, telegramBot, orchestrator, automationUC, checklistSvc)
@@ -943,7 +960,21 @@ func (r *Repository) CreateTask(ctx context.Context, opt CreateTaskOptions) (mod
 - **Context**: 1M tokens input, 8K output
 - **Features**: Function calling, multimodal
 - **Rate limit**: 15 req/min (FREE), 1000 req/min (Paid)
-- **Use cases**: Task parsing, reasoning, tool orchestration
+- **Use cases**: Task parsing, reasoning, tool orchestration (secondary fallback)
+
+**DeepSeek Chat**
+- **Model**: `deepseek-chat`
+- **Context**: 64K tokens input
+- **Features**: Function calling, fast inference
+- **Rate limit**: varies by plan
+- **Use cases**: Task parsing, reasoning, tool orchestration (primary)
+
+**Alibaba Qwen**
+- **Model**: `qwen-turbo`
+- **Context**: 8K tokens input
+- **Features**: Function calling, multilingual
+- **Rate limit**: varies by plan
+- **Use cases**: Task parsing, reasoning (tertiary fallback)
 
 **Voyage AI**
 - **Model**: `voyage-3`

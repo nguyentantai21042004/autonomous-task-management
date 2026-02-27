@@ -4,7 +4,7 @@ import (
 	"autonomous-task-management/internal/task/repository"
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/gcalendar"
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 	pkgLog "autonomous-task-management/pkg/log"
 	"context"
 )
@@ -16,7 +16,7 @@ type CalendarClient interface {
 
 type implUseCase struct {
 	l          pkgLog.Logger
-	llm        *gemini.Client
+	llm        *llmprovider.Manager
 	calendar   CalendarClient
 	repo       repository.MemosRepository
 	vectorRepo repository.VectorRepository
@@ -28,7 +28,7 @@ type implUseCase struct {
 // New creates a new task UseCase instance.
 func New(
 	l pkgLog.Logger,
-	llm *gemini.Client,
+	llm *llmprovider.Manager,
 	calendar CalendarClient,
 	repo repository.MemosRepository,
 	vectorRepo repository.VectorRepository,

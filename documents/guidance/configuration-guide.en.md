@@ -11,7 +11,7 @@
 Ensure you have the following information available (check [x] when done):
 
 - [ ] **Telegram Bot Token** - Required (UI Chat Interface)
-- [ ] **Gemini API Key** - Required (AI brain routing)
+- [ ] **LLM Provider API Key** - Required (AI brain - DeepSeek primary, Gemini secondary, Qwen tertiary)
 - [ ] **Voyage AI API Key** - Required (embeddings functionality)
 - [ ] **Memos Access Token** - Required (backend storage)
 - [ ] **Ngrok Auth Token** - Required (webhook tunneling)
@@ -123,7 +123,7 @@ curl -H "Authorization: Bearer <YOUR_TOKEN>" \
 
 ---
 
-## 3. Gemini API Key
+## 3. LLM Provider API Key (Gemini)
 
 **Purpose**: Employs the "AI Brain" routing algorithms for Agent Orchestrating, Natural Language Comprehension, and Reasoning engines.
 
@@ -411,7 +411,7 @@ go run scripts/gcal-auth/main.go secrets/google-credentials.json
 # ===== REQUIRED BLOCKS =====
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 MEMOS_ACCESS_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-GEMINI_API_KEY="AIzaSyA..."
+DEEPSEEK_API_KEY="sk-..."  # Primary LLM provider (recommended)
 VOYAGE_API_KEY="pa-..."
 NGROK_AUTHTOKEN=2a...
 
@@ -424,6 +424,12 @@ WEBHOOK_SECRET=a1b2c3d4e5f6...
 GEMINI_TIMEZONE="Asia/Ho_Chi_Minh"
 WEBHOOK_RATE_LIMIT_PER_MIN=60
 WEBHOOK_ALLOWED_IPS=  # Empty defaults blanket accept all subnets
+
+# ===== LLM MULTI-PROVIDER (OPTIONAL) =====
+# For multi-provider fallback support, configure in config.yaml
+# See Vietnamese guide section 8 for details
+GEMINI_API_KEY="AIzaSyA..."  # Optional: Google Gemini for secondary fallback
+QWEN_API_KEY="sk-..."  # Optional: Alibaba Qwen for tertiary fallback
 ```
 
 ### Next steps Phase Shift Progression

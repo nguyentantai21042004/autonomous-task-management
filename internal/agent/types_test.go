@@ -52,18 +52,13 @@ func TestToolRegistry(t *testing.T) {
 
 	t.Run("ToFunctionDefinitions", func(t *testing.T) {
 		defs := registry.ToFunctionDefinitions()
-		if len(defs) != 1 {
-			t.Fatalf("expected 1 Tool containing definitions")
-		}
-
-		funcs := defs[0].FunctionDeclarations
-		if len(funcs) != 2 {
-			t.Errorf("expected 2 function declarations, got %d", len(funcs))
+		if len(defs) != 2 {
+			t.Fatalf("expected 2 tools, got %d", len(defs))
 		}
 
 		foundTool1 := false
-		for _, f := range funcs {
-			if f.Name == "tool1" {
+		for _, tool := range defs {
+			if tool.Name == "tool1" {
 				foundTool1 = true
 			}
 		}

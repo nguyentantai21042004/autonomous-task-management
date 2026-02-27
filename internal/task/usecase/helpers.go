@@ -8,30 +8,29 @@ import (
 	"strings"
 	"time"
 
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 )
 
-// parseInputWithLLM sends raw user text to Gemini and returns parsed tasks.
-func (uc *implUseCase) parseInputWithLLM(ctx context.Context, rawText string) ([]gemini.ParsedTask, error) {
+// parseInputWithLLM sends raw user text to LLM and returns parsed tasks.
+func (uc *implUseCase) parseInputWithLLM(ctx context.Context, rawText string) ([]ParsedTask, error) {
 	loc, err := time.LoadLocation(uc.timezone)
 	if err != nil {
 		loc = time.UTC
 	}
 	nowStr := time.Now().In(loc).Format(time.RFC3339)
-	prompt := gemini.BuildTaskParsingPrompt(rawText, nowStr)
+	prompt := BuildTaskParsingPrompt(rawText, nowStr)
 
-	req := gemini.GenerateRequest{
-		Contents: []gemini.Content{
+	req := &llmprovider.Request{
+		Messages: []llmprovider.Message{
 			{
-				Parts: []gemini.Part{
+				Role: "user",
+				Parts: []llmprovider.Part{
 					{Text: prompt},
 				},
 			},
 		},
-		GenerationConfig: &gemini.GenerationConfig{
-			Temperature:     0.2, // Low temperature for deterministic JSON output
-			MaxOutputTokens: 2048,
-		},
+		Temperature: 0.2, // Low temperature for deterministic JSON output
+		MaxTokens:   2048,
 	}
 
 	resp, err := uc.llm.GenerateContent(ctx, req)
@@ -39,17 +38,17 @@ func (uc *implUseCase) parseInputWithLLM(ctx context.Context, rawText string) ([
 		return nil, fmt.Errorf("LLM request failed: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	if len(resp.Content.Parts) == 0 {
 		return nil, fmt.Errorf("empty response from LLM")
 	}
 
-	responseText := resp.Candidates[0].Content.Parts[0].Text
+	responseText := resp.Content.Parts[0].Text
 	uc.l.Infof(ctx, "LLM raw response: %s", responseText)
 
 	// Critical fix: sanitize before JSON unmarshal
 	cleanedJSON := sanitizeJSONResponse(responseText)
 
-	var tasks []gemini.ParsedTask
+	var tasks []ParsedTask
 	if err := json.Unmarshal([]byte(cleanedJSON), &tasks); err != nil {
 		uc.l.Errorf(ctx, "Failed to parse LLM response. Raw=%q Cleaned=%q", responseText, cleanedJSON)
 		return nil, fmt.Errorf("failed to parse LLM JSON response: %w", err)
@@ -81,7 +80,7 @@ func sanitizeJSONResponse(text string) string {
 }
 
 // resolveDueDates resolves absolute dates from parsed tasks into time.Time.
-func (uc *implUseCase) resolveDueDates(parsed []gemini.ParsedTask) []taskWithDate {
+func (uc *implUseCase) resolveDueDates(parsed []ParsedTask) []taskWithDate {
 	now := time.Now()
 	if loc, err := time.LoadLocation(uc.timezone); err == nil {
 		now = now.In(loc)

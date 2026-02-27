@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 	"context"
 )
 
@@ -52,15 +52,15 @@ func (r *ToolRegistry) List() []Tool {
 	return tools
 }
 
-// ToFunctionDefinitions converts tools to Gemini function calling format.
-func (r *ToolRegistry) ToFunctionDefinitions() []gemini.Tool {
-	defs := make([]gemini.FunctionDeclaration, 0, len(r.tools))
+// ToFunctionDefinitions converts tools to LLM function calling format.
+func (r *ToolRegistry) ToFunctionDefinitions() []llmprovider.Tool {
+	tools := make([]llmprovider.Tool, 0, len(r.tools))
 	for _, tool := range r.tools {
-		defs = append(defs, gemini.FunctionDeclaration{
+		tools = append(tools, llmprovider.Tool{
 			Name:        tool.Name(),
 			Description: tool.Description(),
 			Parameters:  tool.Parameters(),
 		})
 	}
-	return []gemini.Tool{{FunctionDeclarations: defs}}
+	return tools
 }

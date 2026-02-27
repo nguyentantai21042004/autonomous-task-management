@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"autonomous-task-management/internal/agent"
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 	pkgLog "autonomous-task-management/pkg/log"
 )
 
 type Orchestrator struct {
-	llm          *gemini.Client
+	llm          *llmprovider.Manager
 	registry     *agent.ToolRegistry
 	l            pkgLog.Logger
 	timezone     string
@@ -19,7 +19,7 @@ type Orchestrator struct {
 	cacheTTL     time.Duration
 }
 
-func New(llm *gemini.Client, registry *agent.ToolRegistry, l pkgLog.Logger, timezone string) *Orchestrator {
+func New(llm *llmprovider.Manager, registry *agent.ToolRegistry, l pkgLog.Logger, timezone string) *Orchestrator {
 	if timezone == "" {
 		timezone = "Asia/Ho_Chi_Minh"
 	}

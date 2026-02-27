@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -21,8 +22,10 @@ type Config struct {
 	Qdrant         QdrantConfig
 	Telegram       TelegramConfig
 	GoogleCalendar GoogleCalendarConfig
-	Gemini         GeminiConfig
 	Voyage         VoyageConfig
+
+	// LLM Provider Abstraction
+	LLM LLMConfig
 
 	// Webhooks
 	Webhook WebhookConfig
@@ -67,13 +70,28 @@ type GoogleCalendarConfig struct {
 	CalendarID      string
 }
 
-type GeminiConfig struct {
-	APIKey   string
-	Timezone string // IANA timezone, e.g. "Asia/Ho_Chi_Minh"
-}
-
 type VoyageConfig struct {
 	APIKey string
+}
+
+// LLMConfig holds configuration for the LLM provider abstraction layer
+type LLMConfig struct {
+	Providers       []ProviderConfig `yaml:"providers"`
+	FallbackEnabled bool             `yaml:"fallback_enabled"`
+	RetryAttempts   int              `yaml:"retry_attempts"`
+	RetryDelay      string           `yaml:"retry_delay"`
+	MaxTotalTimeout string           `yaml:"max_total_timeout"` // NEW: Global timeout for entire fallback chain
+}
+
+// ProviderConfig holds configuration for a single LLM provider
+type ProviderConfig struct {
+	Name     string `yaml:"name"`
+	Enabled  bool   `yaml:"enabled"`
+	Priority int    `yaml:"priority"`
+	APIKey   string `yaml:"api_key"`
+	BaseURL  string `yaml:"base_url,omitempty"`
+	Model    string `yaml:"model"`
+	Timeout  string `yaml:"timeout"`
 }
 
 type WebhookConfig struct {
@@ -149,20 +167,42 @@ func Load() (*Config, error) {
 		cfg.GoogleCalendar.CredentialsPath = googleCreds
 	}
 
-	// Gemini LLM
-	cfg.Gemini.APIKey = viper.GetString("gemini.api_key")
-	cfg.Gemini.Timezone = viper.GetString("gemini.timezone")
-	if apiKey := viper.GetString("gemini_api_key"); apiKey != "" {
-		cfg.Gemini.APIKey = apiKey
-	}
-	if tz := viper.GetString("gemini_timezone"); tz != "" {
-		cfg.Gemini.Timezone = tz
-	}
-
 	// Voyage AI
 	cfg.Voyage.APIKey = viper.GetString("voyage.api_key")
 	if voyageKey := viper.GetString("voyage_api_key"); voyageKey != "" {
 		cfg.Voyage.APIKey = voyageKey
+	}
+
+	// LLM Provider Abstraction
+	cfg.LLM.FallbackEnabled = viper.GetBool("llm.fallback_enabled")
+	cfg.LLM.RetryAttempts = viper.GetInt("llm.retry_attempts")
+	cfg.LLM.RetryDelay = viper.GetString("llm.retry_delay")
+	cfg.LLM.MaxTotalTimeout = viper.GetString("llm.max_total_timeout")
+
+	// Load provider configurations
+	if viper.IsSet("llm.providers") {
+		providersRaw := viper.Get("llm.providers")
+		if providersList, ok := providersRaw.([]interface{}); ok {
+			for _, p := range providersList {
+				if providerMap, ok := p.(map[string]interface{}); ok {
+					provider := ProviderConfig{
+						Name:     getStringFromMap(providerMap, "name"),
+						Enabled:  getBoolFromMap(providerMap, "enabled"),
+						Priority: getIntFromMap(providerMap, "priority"),
+						APIKey:   expandEnvVar(getStringFromMap(providerMap, "api_key")),
+						BaseURL:  getStringFromMap(providerMap, "base_url"),
+						Model:    getStringFromMap(providerMap, "model"),
+						Timeout:  getStringFromMap(providerMap, "timeout"),
+					}
+					cfg.LLM.Providers = append(cfg.LLM.Providers, provider)
+				}
+			}
+		}
+	}
+
+	// Validate LLM config
+	if len(cfg.LLM.Providers) == 0 {
+		return nil, fmt.Errorf("no LLM providers configured - please add llm.providers section to config.yaml")
 	}
 
 	// Webhooks
@@ -196,9 +236,118 @@ func setDefaults() {
 	viper.SetDefault("logger.mode", "debug")
 	viper.SetDefault("logger.encoding", "console")
 	viper.SetDefault("logger.color_enabled", true)
-	viper.SetDefault("gemini.timezone", "Asia/Ho_Chi_Minh")
 	viper.SetDefault("qdrant.collection_name", "tasks")
 	viper.SetDefault("qdrant.vector_size", 1024)
 	viper.SetDefault("webhook.rate_limit_per_min", 60)
 	viper.SetDefault("webhook.enabled", true)
+
+	// LLM defaults
+	viper.SetDefault("llm.fallback_enabled", true)
+	viper.SetDefault("llm.retry_attempts", 3)
+	viper.SetDefault("llm.retry_delay", "1s")
+	viper.SetDefault("llm.max_total_timeout", "60s") // Default: 60 seconds for entire fallback chain
+}
+
+// expandEnvVar expands environment variables in the format ${VAR_NAME}
+func expandEnvVar(value string) string {
+	if value == "" {
+		return value
+	}
+
+	// Check if value is in format ${VAR_NAME}
+	if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") {
+		envVar := value[2 : len(value)-1]
+		// Try viper first (handles both env and config)
+		if envValue := viper.GetString(envVar); envValue != "" {
+			return envValue
+		}
+		// Try lowercase version
+		if envValue := viper.GetString(strings.ToLower(envVar)); envValue != "" {
+			return envValue
+		}
+		// Try direct os.Getenv as last resort
+		if envValue := os.Getenv(envVar); envValue != "" {
+			return envValue
+		}
+	}
+
+	return value
+}
+
+// validateLLMConfig validates the LLM configuration
+func validateLLMConfig(cfg *LLMConfig) error {
+	if len(cfg.Providers) == 0 {
+		return fmt.Errorf("no LLM providers configured")
+	}
+
+	enabledCount := 0
+	priorityMap := make(map[int]bool)
+
+	for i, provider := range cfg.Providers {
+		// Check required fields
+		if provider.Name == "" {
+			return fmt.Errorf("provider %d: name is required", i)
+		}
+		if provider.Model == "" {
+			return fmt.Errorf("provider %s: model is required", provider.Name)
+		}
+
+		if provider.Enabled {
+			enabledCount++
+
+			// Check priority is valid
+			if provider.Priority <= 0 {
+				return fmt.Errorf("provider %s: priority must be positive", provider.Name)
+			}
+
+			// Check for duplicate priorities
+			if priorityMap[provider.Priority] {
+				return fmt.Errorf("provider %s: duplicate priority %d", provider.Name, provider.Priority)
+			}
+			priorityMap[provider.Priority] = true
+
+			// Check API key is set (warning only)
+			if provider.APIKey == "" {
+				fmt.Printf("Warning: provider %s has no API key configured\n", provider.Name)
+			}
+		}
+	}
+
+	if enabledCount == 0 {
+		return fmt.Errorf("no enabled LLM providers")
+	}
+
+	return nil
+}
+
+// Helper functions to safely extract values from map[string]interface{}
+func getStringFromMap(m map[string]interface{}, key string) string {
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func getBoolFromMap(m map[string]interface{}, key string) bool {
+	if val, ok := m[key]; ok {
+		if b, ok := val.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
+func getIntFromMap(m map[string]interface{}, key string) int {
+	if val, ok := m[key]; ok {
+		if i, ok := val.(int); ok {
+			return i
+		}
+		// Handle float64 from JSON unmarshaling
+		if f, ok := val.(float64); ok {
+			return int(f)
+		}
+	}
+	return 0
 }

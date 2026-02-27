@@ -109,7 +109,7 @@ Bot: Automatically marked as completed:
 
 **AI & ML:**
 
-- **LLM**: Google Gemini 2.0 Flash (Agent orchestration, NLU)
+- **LLM**: Multi-provider support (DeepSeek primary, Gemini secondary, Qwen tertiary) (Agent orchestration, NLU)
 - **Embeddings**: Voyage AI voyage-3 (1024 dimensions, multilingual)
 - **Vector DB**: Qdrant (Semantic search, RAG)
 
@@ -139,7 +139,7 @@ Bot: Automatically marked as completed:
 You will need to retrieve the following API credentials (details laid out in the [Configuration Guide](documents/guidance/configuration-guide.en.md)):
 
 - **Telegram Bot Token** - Chat UI
-- **Gemini API Key** - AI brain
+- **LLM Provider API Key** - AI brain (DeepSeek primary, Gemini secondary, Qwen tertiary)
 - **Voyage AI API Key** - Embeddings
 - **Memos Access Token** - Storage endpoint
 - **Google Calendar Credentials** - Scheduling (optional)
@@ -244,7 +244,10 @@ The AI dynamically generates 5 distinct task objects mapped onto their respectiv
 │   ├── webhook/         # Git webhook handlers
 │   └── httpserver/      # HTTP server & routing
 ├── pkg/                 # Shared packages
+│   ├── deepseek/       # DeepSeek LLM client
 │   ├── gemini/         # Gemini LLM client
+│   ├── qwen/           # Qwen LLM client
+│   ├── llmprovider/    # LLM provider manager
 │   ├── voyage/         # Voyage AI embeddings
 │   ├── qdrant/         # Qdrant vector DB client
 │   ├── telegram/       # Telegram bot client

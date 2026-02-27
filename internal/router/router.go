@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"autonomous-task-management/pkg/gemini"
+	"autonomous-task-management/pkg/llmprovider"
 )
 
 // Classify determines user intent from message
@@ -24,26 +24,24 @@ func (r *SemanticRouter) Classify(ctx context.Context, message string, conversat
 
 	prompt := historyContext + fmt.Sprintf(PromptRouterSystem, message)
 
-	// Call Gemini with structured output
-	resp, err := r.llm.GenerateContent(ctx, gemini.GenerateRequest{
-		Contents: []gemini.Content{
+	// Call Provider Manager with normalized request
+	resp, err := r.llm.GenerateContent(ctx, &llmprovider.Request{
+		Messages: []llmprovider.Message{
 			{
 				Role: "user",
-				Parts: []gemini.Part{
+				Parts: []llmprovider.Part{
 					{Text: prompt},
 				},
 			},
 		},
-		GenerationConfig: &gemini.GenerationConfig{
-			Temperature: RouterTemperature,
-		},
+		Temperature: RouterTemperature,
 	})
 	if err != nil {
 		return RouterOutput{}, fmt.Errorf("%s: %s: %w", LogPrefixClassify, ErrMsgLLMCallFailed, err)
 	}
 
-	// Extract text from response
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	// Extract text from normalized response
+	if len(resp.Content.Parts) == 0 {
 		r.l.Warnf(ctx, "%s: %s", LogPrefixClassify, ErrMsgEmptyResponse)
 		return RouterOutput{
 			Intent:     RouterFallbackIntent,
@@ -52,7 +50,7 @@ func (r *SemanticRouter) Classify(ctx context.Context, message string, conversat
 		}, nil
 	}
 
-	responseText := resp.Candidates[0].Content.Parts[0].Text
+	responseText := resp.Content.Parts[0].Text
 
 	// Strip markdown code blocks if present (```json ... ```)
 	responseText = strings.TrimSpace(responseText)
