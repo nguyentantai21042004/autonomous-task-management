@@ -3,7 +3,15 @@ package agent
 import (
 	"autonomous-task-management/pkg/llmprovider"
 	"context"
+	"time"
 )
+
+// SessionMemory holds the recent conversation history for a user.
+type SessionMemory struct {
+	UserID      string
+	Messages    []llmprovider.Message
+	LastUpdated time.Time
+}
 
 // Tool represents an agent tool that can be called by LLM.
 type Tool interface {

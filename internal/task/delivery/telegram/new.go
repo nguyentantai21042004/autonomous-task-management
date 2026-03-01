@@ -3,7 +3,7 @@ package telegram
 import (
 	"github.com/gin-gonic/gin"
 
-	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/internal/automation"
 	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/router"
@@ -22,21 +22,21 @@ type Handler interface {
 func New(
 	l pkgLog.Logger,
 	uc task.UseCase,
-	bot *pkgTelegram.Bot,
-	orch *orchestrator.Orchestrator,
+	bot pkgTelegram.IBot,
+	agentUC agent.UseCase,
 	automationUC automation.UseCase,
-	checklistSvc checklist.Service,
+	checklistUC checklist.UseCase,
 	memosRepo repository.MemosRepository,
-	router router.Router, // 🆕 Use interface for better testability
+	routerUC router.UseCase,
 ) Handler {
 	return &handler{
 		l:            l,
 		uc:           uc,
 		bot:          bot,
-		orchestrator: orch,
+		agent:        agentUC,
 		automationUC: automationUC,
-		checklistSvc: checklistSvc,
+		checklistSvc: checklistUC,
 		memosRepo:    memosRepo,
-		router:       router, // 🆕 Inject router
+		router:       routerUC,
 	}
 }

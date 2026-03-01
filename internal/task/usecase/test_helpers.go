@@ -26,7 +26,7 @@ func (m *mockLogger) Panic(ctx context.Context, arg ...any)                    {
 func (m *mockLogger) Panicf(ctx context.Context, template string, arg ...any)  {}
 
 // createManagerFromGeminiClient creates a Provider Manager with a Gemini provider for testing
-func createManagerFromGeminiClient(client gemini.IGemini, logger *mockLogger) *llmprovider.Manager {
+func createManagerFromGeminiClient(client gemini.IGemini, logger *mockLogger) llmprovider.IManager {
 	provider := llmprovider.NewGeminiAdapter(client)
 	config := &llmprovider.Config{
 		FallbackEnabled: false,

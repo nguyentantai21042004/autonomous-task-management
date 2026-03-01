@@ -13,3 +13,32 @@ type ListTasksOptions struct {
 	Limit  int    // Max number of results (default 20)
 	Offset int    // Pagination offset
 }
+
+// SearchTasksOptions defines search parameters.
+type SearchTasksOptions struct {
+	Query  string   // Natural language query
+	Limit  int      // Top-K results
+	Tags   []string // Filter by tags (optional)
+	Filter PayloadFilter
+}
+
+// PayloadFilter represents Qdrant filter condition structure
+type PayloadFilter struct {
+	Should []Condition
+}
+
+type Condition struct {
+	Key   string
+	Match MatchAny
+}
+
+type MatchAny struct {
+	Values []string
+}
+
+// SearchResult represents a semantic search result.
+type SearchResult struct {
+	MemoID  string
+	Score   float64
+	Payload map[string]interface{}
+}

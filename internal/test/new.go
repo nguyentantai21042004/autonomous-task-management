@@ -1,7 +1,7 @@
 package test
 
 import (
-	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/internal/router"
 	pkgLog "autonomous-task-management/pkg/log"
 
@@ -18,12 +18,12 @@ type Handler interface {
 // New creates a new test handler
 func New(
 	l pkgLog.Logger,
-	router router.Router,
-	orchestrator *orchestrator.Orchestrator,
+	routerUC router.UseCase,
+	agentUC agent.UseCase,
 ) Handler {
 	return &handler{
-		l:            l,
-		router:       router,
-		orchestrator: orchestrator,
+		l:      l,
+		router: routerUC,
+		agent:  agentUC,
 	}
 }

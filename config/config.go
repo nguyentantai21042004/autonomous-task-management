@@ -81,6 +81,7 @@ type LLMConfig struct {
 	RetryAttempts   int              `yaml:"retry_attempts"`
 	RetryDelay      string           `yaml:"retry_delay"`
 	MaxTotalTimeout string           `yaml:"max_total_timeout"` // NEW: Global timeout for entire fallback chain
+	Timezone        string           `yaml:"timezone"`          // Default timezone for temporal context
 }
 
 // ProviderConfig holds configuration for a single LLM provider
@@ -178,6 +179,7 @@ func Load() (*Config, error) {
 	cfg.LLM.RetryAttempts = viper.GetInt("llm.retry_attempts")
 	cfg.LLM.RetryDelay = viper.GetString("llm.retry_delay")
 	cfg.LLM.MaxTotalTimeout = viper.GetString("llm.max_total_timeout")
+	cfg.LLM.Timezone = viper.GetString("llm.timezone")
 
 	// Load provider configurations
 	if viper.IsSet("llm.providers") {

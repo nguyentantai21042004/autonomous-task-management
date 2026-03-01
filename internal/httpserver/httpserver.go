@@ -14,7 +14,6 @@ import (
 // It performs graceful shutdown and surfaces ListenAndServe errors to the caller.
 func (srv HTTPServer) Run() error {
 	if err := srv.mapHandlers(); err != nil {
-		srv.l.Fatalf(context.Background(), "Failed to map handlers: %v", err)
 		return err
 	}
 

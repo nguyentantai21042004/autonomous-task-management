@@ -49,3 +49,6 @@ secrets/
 token.json
 *.pem
 *.key
+
+bin/
+term/

@@ -5,9 +5,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"autonomous-task-management/config"
+	"autonomous-task-management/internal/agent"
+	"autonomous-task-management/internal/automation"
+	"autonomous-task-management/internal/checklist"
+	"autonomous-task-management/internal/router"
+	"autonomous-task-management/internal/sync"
+	"autonomous-task-management/internal/task"
 	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
+	"autonomous-task-management/internal/task/repository"
 	"autonomous-task-management/internal/test"
+	"autonomous-task-management/internal/webhook"
+	"autonomous-task-management/pkg/datemath"
+	"autonomous-task-management/pkg/llmprovider"
 	"autonomous-task-management/pkg/log"
+	"autonomous-task-management/pkg/telegram"
 )
 
 // HTTPServer holds all dependencies for the HTTP server.
@@ -15,51 +27,50 @@ type HTTPServer struct {
 	// Server
 	gin         *gin.Engine
 	l           log.Logger
+	cfg         *config.Config
 	port        int
 	mode        string
 	environment string
 
-	// Phase 2: Task domain
+	// Infrastructure
+	llmManager     llmprovider.IManager
+	memosRepo      repository.MemosRepository
+	vectorRepo     repository.VectorRepository
+	calendarClient task.CalendarClient
+	telegramBot    telegram.IBot
+	dateMathParser datemath.IParser
+
+	// Domain UseCases
+	taskUC       task.UseCase
+	agentUC      agent.UseCase
+	automationUC automation.UseCase
+	checklistUC  checklist.UseCase
+	routerUC     router.UseCase
+	syncUC       sync.UseCase
+	webhookUC    webhook.UseCase
+
+	// Domain Handlers
 	telegramHandler tgDelivery.Handler
-
-	// Phase 3: Webhook sync
-	webhookHandler interface {
-		HandleMemosWebhook(c *gin.Context)
-	}
-
-	// Phase 4: Git webhooks
-	gitWebhookHandler interface {
-		HandleGitHubWebhook(c *gin.Context)
-		HandleGitLabWebhook(c *gin.Context)
-	}
-
-	// Test domain
-	testHandler test.Handler
+	syncHandler     sync.Handler
+	webhookHandler  webhook.Handler
+	testHandler     test.Handler
 }
 
 // Config is the dependency bag passed to New().
 type Config struct {
 	Logger      log.Logger
+	Config      *config.Config
 	Port        int
 	Mode        string
 	Environment string
 
-	// Phase 2: Task domain
-	TelegramHandler tgDelivery.Handler
-
-	// Phase 3: Webhook sync
-	WebhookHandler interface {
-		HandleMemosWebhook(c *gin.Context)
-	}
-
-	// Phase 4: Git webhooks
-	GitWebhookHandler interface {
-		HandleGitHubWebhook(c *gin.Context)
-		HandleGitLabWebhook(c *gin.Context)
-	}
-
-	// Test domain
-	TestHandler test.Handler
+	// Infrastructure
+	LLMManager     llmprovider.IManager
+	MemosRepo      repository.MemosRepository
+	VectorRepo     repository.VectorRepository
+	CalendarClient task.CalendarClient
+	TelegramBot    telegram.IBot
+	DateMathParser datemath.IParser
 }
 
 // New creates a new HTTPServer instance.
@@ -67,15 +78,18 @@ func New(logger log.Logger, cfg Config) (*HTTPServer, error) {
 	gin.SetMode(cfg.Mode)
 
 	srv := &HTTPServer{
-		l:                 logger,
-		gin:               gin.Default(),
-		port:              cfg.Port,
-		mode:              cfg.Mode,
-		environment:       cfg.Environment,
-		telegramHandler:   cfg.TelegramHandler,
-		webhookHandler:    cfg.WebhookHandler,
-		gitWebhookHandler: cfg.GitWebhookHandler,
-		testHandler:       cfg.TestHandler,
+		l:              logger,
+		gin:            gin.Default(),
+		cfg:            cfg.Config,
+		port:           cfg.Port,
+		mode:           cfg.Mode,
+		environment:    cfg.Environment,
+		llmManager:     cfg.LLMManager,
+		memosRepo:      cfg.MemosRepo,
+		vectorRepo:     cfg.VectorRepo,
+		calendarClient: cfg.CalendarClient,
+		telegramBot:    cfg.TelegramBot,
+		dateMathParser: cfg.DateMathParser,
 	}
 
 	if err := srv.validate(); err != nil {

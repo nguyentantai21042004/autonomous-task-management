@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/internal/automation"
 	"autonomous-task-management/internal/checklist"
 	"autonomous-task-management/internal/model"
@@ -23,12 +23,12 @@ import (
 type handler struct {
 	l            pkgLog.Logger
 	uc           task.UseCase
-	bot          *pkgTelegram.Bot
-	orchestrator *orchestrator.Orchestrator
+	bot          pkgTelegram.IBot
+	agent        agent.UseCase
 	automationUC automation.UseCase
-	checklistSvc checklist.Service
+	checklistSvc checklist.UseCase
 	memosRepo    repository.MemosRepository
-	router       router.Router // 🆕 Use interface instead of concrete type
+	router       router.UseCase
 }
 
 // HandleWebhook is the Gin handler for incoming Telegram webhook updates.
@@ -82,7 +82,7 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 	case msg.Text == "/help":
 		return h.handleHelp(ctx, msg.Chat.ID)
 	case msg.Text == "/reset":
-		h.orchestrator.ClearSession(sc.UserID)
+		h.agent.ClearSession(sc.UserID)
 		return h.bot.SendMessage(msg.Chat.ID, "✅ Đã xóa lịch sử hội thoại. Bắt đầu lại từ đầu!")
 	case strings.HasPrefix(msg.Text, "/search "):
 		query := strings.TrimSpace(strings.TrimPrefix(msg.Text, "/search"))
@@ -104,17 +104,17 @@ func (h *handler) processMessage(ctx context.Context, msg *pkgTelegram.Message) 
 
 	// 🆕 Use Semantic Router for natural language messages
 	// Convention: Get conversation history for context
-	session := h.orchestrator.GetSession(sc.UserID)
+	messages := h.agent.GetSessionMessages(sc.UserID)
 	history := []string{}
-	if session != nil && len(session.Messages) > 0 {
-		// Get last 3 messages (6 content items = 3 turns)
-		start := len(session.Messages) - 6
+	if len(messages) > 0 {
+		// Get last 3 messages (3 turns)
+		start := len(messages) - 6
 		if start < 0 {
 			start = 0
 		}
-		for i := start; i < len(session.Messages); i++ {
-			if len(session.Messages[i].Parts) > 0 {
-				history = append(history, session.Messages[i].Parts[0].Text)
+		for i := start; i < len(messages); i++ {
+			if len(messages[i].Parts) > 0 {
+				history = append(history, messages[i].Parts[0].Text)
 			}
 		}
 	}
@@ -244,8 +244,7 @@ func (h *handler) handleAgentOrchestrator(ctx context.Context, sc model.Scope, q
 		return h.bot.SendMessage(chatID, "❌ Vui lòng nhập câu hỏi.\n\nVí dụ: `/ask Tôi có meeting nào vào thứ 2 không?`")
 	}
 
-	userID := fmt.Sprintf("%d", chatID)
-	result, err := h.orchestrator.ProcessQuery(ctx, userID, query)
+	result, err := h.agent.ProcessQuery(ctx, sc, query)
 	if err != nil {
 		h.l.Errorf(ctx, "Agent error: %v", err)
 		return h.bot.SendMessage(chatID, "❌ Rất tiếc, đã có lỗi xảy ra khi trợ lý xử lý yêu cầu của bạn.")
@@ -376,7 +375,7 @@ func (h *handler) handleCheckItem(ctx context.Context, sc model.Scope, text stri
 
 // handleReset clears the session memory for the current user.
 func (h *handler) handleReset(ctx context.Context, sc model.Scope, chatID int64) error {
-	h.orchestrator.ClearSession(sc.UserID)
+	h.agent.ClearSession(sc.UserID)
 	return h.bot.SendMessage(chatID, "✅ Đã xóa lịch sử hội thoại. Bắt đầu lại từ đầu!")
 }
 

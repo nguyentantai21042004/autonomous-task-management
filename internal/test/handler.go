@@ -3,7 +3,7 @@ package test
 import (
 	"fmt"
 
-	"autonomous-task-management/internal/agent/orchestrator"
+	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/router"
 	pkgLog "autonomous-task-management/pkg/log"
@@ -12,9 +12,9 @@ import (
 )
 
 type handler struct {
-	l            pkgLog.Logger
-	router       router.Router
-	orchestrator *orchestrator.Orchestrator
+	l      pkgLog.Logger
+	router router.UseCase
+	agent  agent.UseCase
 }
 
 // HandleTestMessage is a test endpoint to simulate message processing
@@ -44,16 +44,16 @@ func (h *handler) HandleTestMessage(c *gin.Context) {
 	sc := model.Scope{UserID: fmt.Sprintf("telegram_%d", req.UserID)}
 
 	// Get conversation history
-	session := h.orchestrator.GetSession(sc.UserID)
+	messages := h.agent.GetSessionMessages(sc.UserID)
 	history := []string{}
-	if session != nil && len(session.Messages) > 0 {
-		start := len(session.Messages) - 6
+	if len(messages) > 0 {
+		start := len(messages) - 6
 		if start < 0 {
 			start = 0
 		}
-		for i := start; i < len(session.Messages); i++ {
-			if len(session.Messages[i].Parts) > 0 {
-				history = append(history, session.Messages[i].Parts[0].Text)
+		for i := start; i < len(messages); i++ {
+			if len(messages[i].Parts) > 0 {
+				history = append(history, messages[i].Parts[0].Text)
 			}
 		}
 	}
@@ -110,7 +110,7 @@ func (h *handler) HandleResetSession(c *gin.Context) {
 	}
 
 	sc := model.Scope{UserID: fmt.Sprintf("telegram_%d", req.UserID)}
-	h.orchestrator.ClearSession(sc.UserID)
+	h.agent.ClearSession(sc.UserID)
 
 	h.l.Infof(ctx, "internal.test.HandleResetSession: Cleared session for user_id=%d", req.UserID)
 

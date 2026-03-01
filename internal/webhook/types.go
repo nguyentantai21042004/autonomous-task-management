@@ -1,8 +1,8 @@
 package webhook
 
-// SecurityConfig holds webhook security settings
+// SecurityConfig defines configuration for webhook security
 type SecurityConfig struct {
-	Secret          string   // Shared secret for signature verification
-	AllowedIPs      []string // IP whitelist (optional)
-	RateLimitPerMin int      // Max requests per minute
+	Secret          string   `json:"secret"`             // GitHub/GitLab webhook secret
+	AllowedIPs      []string `json:"allowed_ips"`        // Whitelist of IPs (optional)
+	RateLimitPerMin int      `json:"rate_limit_per_min"` // Rate limit per source (default 60)
 }

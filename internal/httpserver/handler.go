@@ -3,37 +3,49 @@ package httpserver
 import (
 	"context"
 
-	"autonomous-task-management/internal/model"
-
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+
+	"autonomous-task-management/internal/agent"
+	agentUC "autonomous-task-management/internal/agent/usecase"
+	automationUC "autonomous-task-management/internal/automation/usecase"
+	checklistUC "autonomous-task-management/internal/checklist/usecase"
+	routerUC "autonomous-task-management/internal/router/usecase"
+	syncHttp "autonomous-task-management/internal/sync/delivery/http"
+	syncUC "autonomous-task-management/internal/sync/usecase"
+	tgDelivery "autonomous-task-management/internal/task/delivery/telegram"
+	taskUC "autonomous-task-management/internal/task/usecase"
+	"autonomous-task-management/internal/test"
+	"autonomous-task-management/internal/webhook"
+	webhookHttp "autonomous-task-management/internal/webhook/delivery/http"
+	webhookUC "autonomous-task-management/internal/webhook/usecase"
 )
 
-func (srv HTTPServer) mapHandlers() error {
+func (srv *HTTPServer) mapHandlers() error {
 	srv.registerMiddlewares()
 	srv.registerSystemRoutes()
 
-	if err := srv.registerDomainRoutes(); err != nil {
-		return err
-	}
+	// Initialize domains in order of dependency
+	srv.setupChecklistDomain()
+	srv.setupRouterDomain()
+	srv.setupTaskDomain()
+	srv.setupSyncDomain()
+	srv.setupAutomationDomain()
+	srv.setupAgentDomain()
+	srv.setupWebhookDomain()
+	srv.setupTestDomain()
 
 	return nil
 }
 
-func (srv HTTPServer) registerMiddlewares() {
-	// CORS recovery
+func (srv *HTTPServer) registerMiddlewares() {
 	srv.gin.Use(gin.Recovery())
-
 	ctx := context.Background()
-	if srv.environment == string(model.EnvironmentProduction) {
-		srv.l.Infof(ctx, "CORS mode: production")
-	} else {
-		srv.l.Infof(ctx, "CORS mode: %s", srv.environment)
-	}
+	srv.l.Infof(ctx, "Middlewares registered (Recovery enabled)")
 }
 
-func (srv HTTPServer) registerSystemRoutes() {
+func (srv *HTTPServer) registerSystemRoutes() {
 	srv.gin.GET("/health", srv.healthCheck)
 	srv.gin.GET("/ready", srv.readyCheck)
 	srv.gin.GET("/live", srv.liveCheck)
@@ -45,42 +57,92 @@ func (srv HTTPServer) registerSystemRoutes() {
 	))
 }
 
-// registerDomainRoutes registers all domain routes.
-func (srv HTTPServer) registerDomainRoutes() error {
-	ctx := context.Background()
+func (srv *HTTPServer) setupChecklistDomain() {
+	srv.checklistUC = checklistUC.New()
+}
 
-	// Phase 2: Telegram webhook
-	if srv.telegramHandler != nil {
+func (srv *HTTPServer) setupRouterDomain() {
+	srv.routerUC = routerUC.New(srv.llmManager, srv.l)
+}
+
+func (srv *HTTPServer) setupTaskDomain() {
+	srv.taskUC = taskUC.New(
+		srv.l,
+		srv.llmManager,
+		srv.calendarClient,
+		srv.memosRepo,
+		srv.vectorRepo,
+		srv.dateMathParser,
+		srv.cfg.LLM.Timezone,
+		srv.cfg.Memos.ExternalURL,
+	)
+
+	// Register Telegram Webhook if token exists
+	if srv.cfg.Telegram.BotToken != "" {
+		// Note: we need agentUC, automationUC for Telegram handler,
+		// so we'll finish telegram setup in setupAgentDomain or a separate step
+	}
+}
+
+func (srv *HTTPServer) setupSyncDomain() {
+	if srv.vectorRepo != nil {
+		srv.syncUC = syncUC.New(srv.memosRepo, srv.vectorRepo, srv.l)
+		srv.syncHandler = syncHttp.NewHandler(srv.syncUC, srv.l)
+		srv.gin.POST("/webhook/memos", srv.syncHandler.HandleMemosWebhook)
+		srv.l.Infof(context.Background(), "Sync domain routes registered at POST /webhook/memos")
+	}
+}
+
+func (srv *HTTPServer) setupAutomationDomain() {
+	srv.automationUC = automationUC.New(srv.memosRepo, srv.vectorRepo, srv.checklistUC, srv.l)
+}
+
+func (srv *HTTPServer) setupAgentDomain() {
+	// Each domain self-registers its own tools — no cross-domain coupling here.
+	registry := agent.NewToolRegistry()
+	srv.taskUC.RegisterAgentTools(registry)
+	srv.checklistUC.RegisterAgentTools(registry, srv.memosRepo, srv.vectorRepo, srv.l)
+
+	srv.agentUC = agentUC.New(srv.llmManager, registry, srv.l, srv.cfg.LLM.Timezone)
+
+	// Now we can finish Telegram Handler setup
+	if srv.cfg.Telegram.BotToken != "" {
+		srv.telegramHandler = tgDelivery.New(
+			srv.l,
+			srv.taskUC,
+			srv.telegramBot,
+			srv.agentUC,
+			srv.automationUC,
+			srv.checklistUC,
+			srv.memosRepo,
+			srv.routerUC,
+		)
 		srv.gin.POST("/webhook/telegram", srv.telegramHandler.HandleWebhook)
-		srv.l.Infof(ctx, "Telegram webhook route registered at POST /webhook/telegram")
-	} else {
-		srv.l.Infof(ctx, "Telegram handler not configured, skipping webhook route")
+		srv.l.Infof(context.Background(), "Telegram webhook route registered at POST /webhook/telegram")
 	}
+}
 
-	// Phase 3: Memos webhook
-	if srv.webhookHandler != nil {
-		srv.gin.POST("/webhook/memos", srv.webhookHandler.HandleMemosWebhook)
-		srv.l.Infof(ctx, "Memos webhook route registered at POST /webhook/memos")
-	} else {
-		srv.l.Infof(ctx, "Webhook handler not configured, skipping Memos webhook route")
+func (srv *HTTPServer) setupWebhookDomain() {
+	if srv.cfg.Webhook.Enabled {
+		webhookConfig := webhook.SecurityConfig{
+			Secret:          srv.cfg.Webhook.Secret,
+			AllowedIPs:      srv.cfg.Webhook.AllowedIPs,
+			RateLimitPerMin: srv.cfg.Webhook.RateLimitPerMin,
+		}
+		srv.webhookUC = webhookUC.New(webhookConfig, srv.l)
+		srv.webhookHandler = webhookHttp.NewHandler(srv.webhookUC, srv.automationUC, srv.l)
+
+		srv.gin.POST("/webhook/github", srv.webhookHandler.HandleGitHubWebhook)
+		srv.gin.POST("/webhook/gitlab", srv.webhookHandler.HandleGitLabWebhook)
+		srv.l.Infof(context.Background(), "Webhook domain routes registered (GitHub/GitLab)")
 	}
+}
 
-	// Phase 4: Git Webhooks
-	if srv.gitWebhookHandler != nil {
-		srv.gin.POST("/webhook/github", srv.gitWebhookHandler.HandleGitHubWebhook)
-		srv.gin.POST("/webhook/gitlab", srv.gitWebhookHandler.HandleGitLabWebhook)
-		srv.l.Infof(ctx, "Git webhook routes registered at POST /webhook/github and POST /webhook/gitlab")
-	} else {
-		srv.l.Infof(ctx, "Git webhook handler not configured, skipping Git webhook routes")
-	}
-
-	// Test domain
-	if srv.testHandler != nil {
-		srv.gin.POST("/test/message", srv.testHandler.HandleTestMessage)
-		srv.gin.POST("/test/reset", srv.testHandler.HandleResetSession)
-		srv.gin.GET("/test/health", srv.testHandler.HandleHealthCheck)
-		srv.l.Infof(ctx, "Test routes registered at POST /test/message, POST /test/reset, GET /test/health")
-	}
-
-	return nil
+func (srv *HTTPServer) setupTestDomain() {
+	// Note: test domain might need direct orchestrator access if it's strictly for testing ReAct loop
+	// For now, let's just make a mock or skip if not needed for production
+	srv.testHandler = test.New(srv.l, srv.routerUC, srv.agentUC)
+	srv.gin.POST("/test/message", srv.testHandler.HandleTestMessage)
+	srv.gin.POST("/test/reset", srv.testHandler.HandleResetSession)
+	srv.gin.GET("/test/health", srv.testHandler.HandleHealthCheck)
 }

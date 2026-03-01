@@ -1,4 +1,4 @@
-package telegram_test
+package telegram
 
 import (
 	"encoding/json"
@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"autonomous-task-management/pkg/telegram"
 )
 
 func TestBot(t *testing.T) {
@@ -54,7 +52,8 @@ func TestBot(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	bot := telegram.NewBot("test-token")
+	// Use botImpl directly for testing internals like apiURL
+	bot := NewBot("test-token").(*botImpl)
 	bot.SetAPIURL(ts.URL) // Route commands to test server instead of api.telegram.org
 
 	t.Run("SetWebhook Success", func(t *testing.T) {
@@ -107,7 +106,7 @@ func TestBot(t *testing.T) {
 	})
 
 	t.Run("Invalid API URL logic", func(t *testing.T) {
-		badBot := telegram.NewBot("test")
+		badBot := NewBot("test").(*botImpl)
 		badBot.SetAPIURL("http://invalid-url.local:1234")
 		err := badBot.SendMessage(12345, "fail")
 		if err == nil {

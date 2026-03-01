@@ -45,6 +45,7 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("Ngữ cảnh (Các task liên quan):\n\n")
 
+	sourceTasks := make([]task.SourceTask, 0, len(searchResults))
 	zombieVectors := make([]string, 0) // 🆕 Track zombie vectors for cleanup
 
 	for i, sr := range searchResults {
@@ -71,6 +72,14 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 			uc.l.Warnf(ctx, "AnswerQuery: failed to fetch task %s: %v", sr.MemoID, err)
 			continue
 		}
+
+		// Add to source tasks
+		sourceTasks = append(sourceTasks, task.SourceTask{
+			MemoID:  sr.MemoID,
+			MemoURL: memoTask.MemoURL,
+			Content: memoTask.Content,
+			Score:   sr.Score,
+		})
 
 		// CRITICAL: Truncate to prevent token overflow
 		safeContent := truncateText(memoTask.Content, MaxCharsPerTask)
@@ -136,8 +145,8 @@ Câu hỏi: "%s"`, contextBuilder.String(), dateContext, input.Query)
 
 	return task.QueryOutput{
 		Answer:      answerText,
-		SourceTasks: searchResults,
-		SourceCount: len(searchResults),
+		SourceTasks: sourceTasks,
+		SourceCount: len(sourceTasks),
 	}, nil
 }
 

@@ -22,32 +22,3 @@ type VectorRepository interface {
 	SearchTasksWithFilter(ctx context.Context, opt SearchTasksOptions) ([]SearchResult, error)
 	DeleteTask(ctx context.Context, taskID string) error
 }
-
-// SearchTasksOptions defines search parameters.
-type SearchTasksOptions struct {
-	Query  string   // Natural language query
-	Limit  int      // Top-K results
-	Tags   []string // Filter by tags (optional)
-	Filter PayloadFilter
-}
-
-// PayloadFilter represents Qdrant filter condition structure
-type PayloadFilter struct {
-	Should []Condition
-}
-
-type Condition struct {
-	Key   string
-	Match MatchAny
-}
-
-type MatchAny struct {
-	Values []string
-}
-
-// SearchResult represents a semantic search result.
-type SearchResult struct {
-	MemoID  string
-	Score   float64
-	Payload map[string]interface{}
-}
