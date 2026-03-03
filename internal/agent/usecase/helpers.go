@@ -50,27 +50,32 @@ func (uc *implUseCase) cleanupExpiredSessions() {
 	ticker := time.NewTicker(SessionCleanupInterval * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		uc.cacheMutex.Lock()
+	for {
+		select {
+		case <-ticker.C:
+			uc.cacheMutex.Lock()
 
-		now := time.Now()
-		expiredKeys := make([]string, 0)
+			now := time.Now()
+			expiredKeys := make([]string, 0)
 
-		for userID, session := range uc.sessionCache {
-			if now.Sub(session.LastUpdated) > uc.cacheTTL {
-				expiredKeys = append(expiredKeys, userID)
+			for userID, session := range uc.sessionCache {
+				if now.Sub(session.LastUpdated) > uc.cacheTTL {
+					expiredKeys = append(expiredKeys, userID)
+				}
 			}
-		}
 
-		for _, userID := range expiredKeys {
-			delete(uc.sessionCache, userID)
-		}
+			for _, userID := range expiredKeys {
+				delete(uc.sessionCache, userID)
+			}
 
-		uc.cacheMutex.Unlock()
+			uc.cacheMutex.Unlock()
 
-		if len(expiredKeys) > 0 {
-			uc.l.Infof(context.Background(),
-				"%s: "+LogMsgSessionsCleanedUp, LogPrefixCleanupSessions, len(expiredKeys))
+			if len(expiredKeys) > 0 {
+				uc.l.Infof(context.Background(),
+					"%s: "+LogMsgSessionsCleanedUp, LogPrefixCleanupSessions, len(expiredKeys))
+			}
+		case <-uc.stopCleanup:
+			return
 		}
 	}
 }

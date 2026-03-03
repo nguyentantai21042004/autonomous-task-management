@@ -17,6 +17,7 @@ type implUseCase struct {
 	sessionCache map[string]*agent.SessionMemory
 	cacheMutex   sync.RWMutex
 	cacheTTL     time.Duration
+	stopCleanup  chan struct{} // Channel to stop cleanup goroutine
 }
 
 func New(llm llmprovider.IManager, registry *agent.ToolRegistry, l pkgLog.Logger, timezone string) agent.UseCase {
@@ -30,6 +31,7 @@ func New(llm llmprovider.IManager, registry *agent.ToolRegistry, l pkgLog.Logger
 		timezone:     timezone,
 		sessionCache: make(map[string]*agent.SessionMemory),
 		cacheTTL:     10 * time.Minute,
+		stopCleanup:  make(chan struct{}),
 	}
 
 	go uc.cleanupExpiredSessions()
