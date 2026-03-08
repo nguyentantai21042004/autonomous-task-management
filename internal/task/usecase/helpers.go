@@ -13,8 +13,8 @@ import (
 	"autonomous-task-management/pkg/llmprovider"
 )
 
-// TaskParsingSystemPrompt is the system instruction sent to LLM for task parsing.
-const TaskParsingSystemPrompt = `You are a task parsing assistant. Your job is to extract structured tasks from user input.
+// taskParsingSystemPrompt is the system instruction sent to LLM for task parsing.
+const taskParsingSystemPrompt = `You are a task parsing assistant. Your job is to extract structured tasks from user input.
 
 RULES:
 1. Parse the input text and extract all individual tasks.
@@ -64,9 +64,9 @@ EXAMPLE OUTPUT:
 
 Now parse the following input and return ONLY the JSON array:`
 
-// BuildTaskParsingPrompt builds the full prompt for task parsing.
-func BuildTaskParsingPrompt(userInput string, currentTime string) string {
-	return TaskParsingSystemPrompt + "\n\nCURRENT MOCK CONTEXT (USE FOR RELATIVE DATE/TIME RESOLUTION):\n" + currentTime + "\n\nNow parse the following input and return ONLY the JSON array:\n" + userInput
+// buildTaskParsingPrompt builds the full prompt for task parsing.
+func buildTaskParsingPrompt(userInput string, currentTime string) string {
+	return taskParsingSystemPrompt + "\n\nCURRENT MOCK CONTEXT (USE FOR RELATIVE DATE/TIME RESOLUTION):\n" + currentTime + "\n\nNow parse the following input and return ONLY the JSON array:\n" + userInput
 }
 
 // parseInputWithLLM sends raw user text to LLM and returns parsed tasks.
@@ -76,7 +76,7 @@ func (uc *implUseCase) parseInputWithLLM(ctx context.Context, rawText string) ([
 		loc = time.UTC
 	}
 	nowStr := time.Now().In(loc).Format(time.RFC3339)
-	prompt := BuildTaskParsingPrompt(rawText, nowStr)
+	prompt := buildTaskParsingPrompt(rawText, nowStr)
 
 	req := &llmprovider.Request{
 		Messages: []llmprovider.Message{

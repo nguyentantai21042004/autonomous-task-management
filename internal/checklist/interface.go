@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"autonomous-task-management/internal/agent"
-	"autonomous-task-management/internal/task/repository"
-	pkgLog "autonomous-task-management/pkg/log"
 )
 
 // UseCase defines the business logic interface for the checklist domain.
@@ -26,6 +24,5 @@ type UseCase interface {
 	IsFullyCompleted(content string) bool
 
 	// RegisterAgentTools registers this domain's agent tools into the registry.
-	// l is provided by the caller since checklist usecase is stateless (no logger field).
-	RegisterAgentTools(registry *agent.ToolRegistry, memosRepo repository.MemosRepository, vectorRepo repository.VectorRepository, l pkgLog.Logger)
+	RegisterAgentTools(registry *agent.ToolRegistry)
 }

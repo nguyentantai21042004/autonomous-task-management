@@ -8,8 +8,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// newTestUseCase creates a usecase for testing with nil/minimal dependencies.
+// The ParseCheckboxes, GetStats, etc. methods don't use these dependencies.
+func newTestUseCase() checklist.UseCase {
+	return New(nil, nil, &noopLogger{})
+}
+
+// noopLogger is a minimal no-op logger for testing.
+type noopLogger struct{}
+
+func (noopLogger) Debug(context.Context, ...interface{})                        {}
+func (noopLogger) Debugf(context.Context, string, ...interface{})              {}
+func (noopLogger) Info(context.Context, ...interface{})                         {}
+func (noopLogger) Infof(context.Context, string, ...interface{})               {}
+func (noopLogger) Warn(context.Context, ...interface{})                         {}
+func (noopLogger) Warnf(context.Context, string, ...interface{})               {}
+func (noopLogger) Error(context.Context, ...interface{})                        {}
+func (noopLogger) Errorf(context.Context, string, ...interface{})              {}
+func (noopLogger) Fatal(context.Context, ...interface{})                        {}
+func (noopLogger) Fatalf(context.Context, string, ...interface{})              {}
+func (noopLogger) DPanic(context.Context, ...interface{})                       {}
+func (noopLogger) DPanicf(context.Context, string, ...interface{})             {}
+func (noopLogger) Panic(context.Context, ...interface{})                        {}
+func (noopLogger) Panicf(context.Context, string, ...interface{})              {}
+
 func TestParseCheckboxes_EmptyContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	checkboxes := uc.ParseCheckboxes("")
 
@@ -17,7 +41,7 @@ func TestParseCheckboxes_EmptyContent(t *testing.T) {
 }
 
 func TestParseCheckboxes_NoCheckboxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Task Title
 This is a regular task without checkboxes.
@@ -29,7 +53,7 @@ Just some text content.`
 }
 
 func TestParseCheckboxes_UncheckedBoxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Task with Checklist
 - [ ] Item 1
@@ -48,7 +72,7 @@ func TestParseCheckboxes_UncheckedBoxes(t *testing.T) {
 }
 
 func TestParseCheckboxes_CheckedBoxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Completed Tasks
 - [x] Done item 1
@@ -64,7 +88,7 @@ func TestParseCheckboxes_CheckedBoxes(t *testing.T) {
 }
 
 func TestParseCheckboxes_MixedState(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Mixed Checklist
 - [x] Completed item
@@ -82,7 +106,7 @@ func TestParseCheckboxes_MixedState(t *testing.T) {
 }
 
 func TestParseCheckboxes_WithIndentation(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Nested Checklist
 - [ ] Parent item
@@ -100,7 +124,7 @@ func TestParseCheckboxes_WithIndentation(t *testing.T) {
 }
 
 func TestParseCheckboxes_SpecialCharacters(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Special Characters
 - [ ] Item with @mention
@@ -118,7 +142,7 @@ func TestParseCheckboxes_SpecialCharacters(t *testing.T) {
 }
 
 func TestParseCheckboxes_Unicode(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Vietnamese Checklist
 - [ ] Hoàn thành báo cáo
@@ -134,7 +158,7 @@ func TestParseCheckboxes_Unicode(t *testing.T) {
 }
 
 func TestParseCheckboxes_EmptyCheckboxText(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Empty Checkboxes
 - [ ] 
@@ -148,7 +172,7 @@ func TestParseCheckboxes_EmptyCheckboxText(t *testing.T) {
 }
 
 func TestParseCheckboxes_MultilineContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Task
 Some description here.
@@ -168,7 +192,7 @@ More text.`
 }
 
 func TestGetStats_EmptyContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	stats := uc.GetStats("")
 
@@ -179,7 +203,7 @@ func TestGetStats_EmptyContent(t *testing.T) {
 }
 
 func TestGetStats_NoCheckboxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := "Just regular text without checkboxes"
 	stats := uc.GetStats(content)
@@ -189,7 +213,7 @@ func TestGetStats_NoCheckboxes(t *testing.T) {
 }
 
 func TestGetStats_AllUnchecked(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Item 1
 - [ ] Item 2
@@ -204,7 +228,7 @@ func TestGetStats_AllUnchecked(t *testing.T) {
 }
 
 func TestGetStats_AllChecked(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [x] Item 2
@@ -219,7 +243,7 @@ func TestGetStats_AllChecked(t *testing.T) {
 }
 
 func TestGetStats_PartiallyCompleted(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [ ] Item 2
@@ -235,7 +259,7 @@ func TestGetStats_PartiallyCompleted(t *testing.T) {
 }
 
 func TestIsFullyCompleted_EmptyContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	completed := uc.IsFullyCompleted("")
 
@@ -243,7 +267,7 @@ func TestIsFullyCompleted_EmptyContent(t *testing.T) {
 }
 
 func TestIsFullyCompleted_NoCheckboxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	completed := uc.IsFullyCompleted("Regular text")
 
@@ -251,7 +275,7 @@ func TestIsFullyCompleted_NoCheckboxes(t *testing.T) {
 }
 
 func TestIsFullyCompleted_AllChecked(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [x] Item 2`
@@ -262,7 +286,7 @@ func TestIsFullyCompleted_AllChecked(t *testing.T) {
 }
 
 func TestIsFullyCompleted_PartiallyChecked(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [ ] Item 2`
@@ -273,7 +297,7 @@ func TestIsFullyCompleted_PartiallyChecked(t *testing.T) {
 }
 
 func TestUpdateAllCheckboxes_CheckAll(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Item 1
 - [ ] Item 2
@@ -288,7 +312,7 @@ func TestUpdateAllCheckboxes_CheckAll(t *testing.T) {
 }
 
 func TestUpdateAllCheckboxes_UncheckAll(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [x] Item 2
@@ -303,7 +327,7 @@ func TestUpdateAllCheckboxes_UncheckAll(t *testing.T) {
 }
 
 func TestUpdateAllCheckboxes_EmptyContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	updated := uc.UpdateAllCheckboxes("", true)
 
@@ -311,7 +335,7 @@ func TestUpdateAllCheckboxes_EmptyContent(t *testing.T) {
 }
 
 func TestUpdateAllCheckboxes_PreservesOtherContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Task Title
 Some description.
@@ -331,7 +355,7 @@ Some notes.`
 }
 
 func TestUpdateCheckbox_ValidMatch(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Item 1
 - [ ] Item 2
@@ -352,7 +376,7 @@ func TestUpdateCheckbox_ValidMatch(t *testing.T) {
 }
 
 func TestUpdateCheckbox_UncheckItem(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [x] Item 1
 - [x] Item 2
@@ -372,7 +396,7 @@ func TestUpdateCheckbox_UncheckItem(t *testing.T) {
 }
 
 func TestUpdateCheckbox_PartialMatch(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Complete the report
 - [ ] Send email to client
@@ -391,7 +415,7 @@ func TestUpdateCheckbox_PartialMatch(t *testing.T) {
 }
 
 func TestUpdateCheckbox_NoMatch(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Item 1
 - [ ] Item 2`
@@ -408,7 +432,7 @@ func TestUpdateCheckbox_NoMatch(t *testing.T) {
 }
 
 func TestUpdateCheckbox_EmptyContent(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	output, err := uc.UpdateCheckbox(context.Background(), checklist.UpdateCheckboxInput{
 		Content:      "",
@@ -422,7 +446,7 @@ func TestUpdateCheckbox_EmptyContent(t *testing.T) {
 }
 
 func TestUpdateCheckbox_NoCheckboxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := "Regular text without checkboxes"
 
@@ -438,7 +462,7 @@ func TestUpdateCheckbox_NoCheckboxes(t *testing.T) {
 }
 
 func TestUpdateCheckbox_PreservesFormatting(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `# Task Title
 
@@ -464,7 +488,7 @@ Notes below.`
 }
 
 func TestUpdateCheckbox_WithVietnamese(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Hoàn thành báo cáo
 - [ ] Gửi email
@@ -484,7 +508,7 @@ func TestUpdateCheckbox_WithVietnamese(t *testing.T) {
 }
 
 func TestUpdateCheckbox_CaseInsensitive(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Complete Task
 - [ ] Send Email
@@ -502,7 +526,7 @@ func TestUpdateCheckbox_CaseInsensitive(t *testing.T) {
 }
 
 func TestUpdateCheckbox_MultipleMatches(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Task 1
 - [ ] Task 2
@@ -524,7 +548,7 @@ func TestUpdateCheckbox_MultipleMatches(t *testing.T) {
 }
 
 func TestUpdateCheckbox_NestedCheckboxes(t *testing.T) {
-	uc := New()
+	uc := newTestUseCase()
 
 	content := `- [ ] Parent 1
   - [ ] Child 1

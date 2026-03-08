@@ -58,7 +58,7 @@ func (srv *HTTPServer) registerSystemRoutes() {
 }
 
 func (srv *HTTPServer) setupChecklistDomain() {
-	srv.checklistUC = checklistUC.New()
+	srv.checklistUC = checklistUC.New(srv.memosRepo, srv.vectorRepo, srv.l)
 }
 
 func (srv *HTTPServer) setupRouterDomain() {
@@ -102,7 +102,7 @@ func (srv *HTTPServer) setupAgentDomain() {
 	// Each domain self-registers its own tools — no cross-domain coupling here.
 	registry := agent.NewToolRegistry()
 	srv.taskUC.RegisterAgentTools(registry)
-	srv.checklistUC.RegisterAgentTools(registry, srv.memosRepo, srv.vectorRepo, srv.l)
+	srv.checklistUC.RegisterAgentTools(registry)
 
 	srv.agentUC = agentUC.New(srv.llmManager, registry, srv.l, srv.cfg.LLM.Timezone)
 

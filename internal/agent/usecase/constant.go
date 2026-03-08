@@ -61,3 +61,8 @@ const (
 	MaxSessionHistory      = 10 // Last 5 turns (10 messages)
 	SessionCleanupInterval = 5  // minutes
 )
+
+// Date format
+const (
+	DateFormatISO = "2006-01-02"
+)

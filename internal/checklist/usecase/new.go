@@ -4,6 +4,8 @@ import (
 	"regexp"
 
 	"autonomous-task-management/internal/checklist"
+	"autonomous-task-management/internal/task/repository"
+	pkgLog "autonomous-task-management/pkg/log"
 )
 
 const (
@@ -15,11 +17,17 @@ const (
 )
 
 type implUseCase struct {
-	pattern *regexp.Regexp
+	pattern    *regexp.Regexp
+	memosRepo  repository.MemosRepository
+	vectorRepo repository.VectorRepository
+	l          pkgLog.Logger
 }
 
-func New() checklist.UseCase {
+func New(memosRepo repository.MemosRepository, vectorRepo repository.VectorRepository, l pkgLog.Logger) checklist.UseCase {
 	return &implUseCase{
-		pattern: regexp.MustCompile(CheckboxPattern),
+		pattern:    regexp.MustCompile(CheckboxPattern),
+		memosRepo:  memosRepo,
+		vectorRepo: vectorRepo,
+		l:          l,
 	}
 }
