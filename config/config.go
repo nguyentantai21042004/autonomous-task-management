@@ -245,9 +245,9 @@ func setDefaults() {
 
 	// LLM defaults
 	viper.SetDefault("llm.fallback_enabled", true)
-	viper.SetDefault("llm.retry_attempts", 3)
+	viper.SetDefault("llm.retry_attempts", 2)
 	viper.SetDefault("llm.retry_delay", "1s")
-	viper.SetDefault("llm.max_total_timeout", "60s") // Default: 60 seconds for entire fallback chain
+	viper.SetDefault("llm.max_total_timeout", "20s") // Reduced from 60s: faster fail for chat UX
 }
 
 // expandEnvVar expands environment variables in the format ${VAR_NAME}

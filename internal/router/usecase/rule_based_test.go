@@ -97,12 +97,12 @@ func TestClassifyByRules_Conversation_Strong(t *testing.T) {
 
 func TestClassifyByRules_Ambiguous_ReturnsNotConfident(t *testing.T) {
 	ambiguous := []string{
-		"PR 123 thế nào rồi?",                    // no clear signal
-		"tôi không biết phải làm sao",             // vague
-		"project SMAP đang ở trạng thái nào",      // could be search or conversation
-		"nhớ là còn việc báo cáo chưa xong",       // soft create signal
-		"cái task đó xong chưa",                   // soft search
-		"item số 2 trong memo đó xong rồi",        // soft checklist
+		"PR 123 thế nào rồi?",                // no clear signal
+		"tôi không biết phải làm sao",        // vague
+		"project SMAP đang ở trạng thái nào", // could be search or conversation
+		"nhớ là còn việc báo cáo chưa xong",  // soft create signal
+		"cái task đó xong chưa",              // soft search
+		"item số 2 trong memo đó xong rồi",   // soft checklist
 	}
 	for _, msg := range ambiguous {
 		t.Run(msg, func(t *testing.T) {
@@ -188,6 +188,45 @@ func TestScorePatterns_CapsAt100(t *testing.T) {
 func TestScorePatterns_ZeroForNoMatch(t *testing.T) {
 	score := scorePatterns("completely unrelated text", createSignals)
 	assert.Equal(t, 0, score)
+}
+
+func TestScorePatterns_MediumSignalAccumulation(t *testing.T) {
+	// Two medium signals (45+45=90) should pass threshold 80
+	score := scorePatterns("deadline hạn chót", createSignals)
+	assert.GreaterOrEqual(t, score, 80)
+}
+
+func TestContainsToken_StartOfString(t *testing.T) {
+	assert.True(t, containsToken("tìm kiếm task", "tìm"))
+}
+
+func TestContainsToken_EndOfString(t *testing.T) {
+	assert.True(t, containsToken("cần tìm", "tìm"))
+}
+
+func TestContainsToken_EntireString(t *testing.T) {
+	assert.True(t, containsToken("tìm", "tìm"))
+}
+
+func TestContainsToken_EmptyInput(t *testing.T) {
+	assert.False(t, containsToken("", "tìm"))
+}
+
+func TestNormalize_Basic(t *testing.T) {
+	assert.Equal(t, "hello   world", normalize("  HELLO   World  "))
+}
+
+func TestNormalize_Empty(t *testing.T) {
+	assert.Equal(t, "", normalize(""))
+}
+
+func TestClassifyByRules_IntentPriority(t *testing.T) {
+	// When message contains signals for multiple intents,
+	// CREATE should take priority over others
+	result, confident := classifyByRules("tạo task mới tìm kiếm")
+	if confident {
+		assert.Equal(t, router.IntentCreateTask, result.Intent)
+	}
 }
 
 // ---------------------------------------------------------------------------

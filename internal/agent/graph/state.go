@@ -49,12 +49,15 @@ type GraphState struct {
 	CurrentIntent string
 
 	// Context compression (giam token cost)
-	OlderSummary string               // cac turns cu duoc tom tat thanh 1 doan
+	OlderSummary string                // cac turns cu duoc tom tat thanh 1 doan
 	RecentTurns  []llmprovider.Message // chi giu maxRecentTurns turns gan nhat, raw
 
 	// Metadata
 	LastUpdated time.Time
 	TTL         time.Duration
+
+	// TimeContext: injected per-request, appended to system prompt (not stored in history)
+	TimeContext string
 }
 
 // NewGraphState tao GraphState moi cho mot user.

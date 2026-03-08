@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"autonomous-task-management/internal/task/repository"
-	pkgQdrant "autonomous-task-management/pkg/qdrant"
 	"autonomous-task-management/pkg/llmprovider"
 )
 
@@ -203,60 +202,45 @@ func allTags(t taskWithDate) []string {
 	return tags
 }
 
-// hybridRerank applies keyword BM25 scoring + RRF fusion on dense results,
-// then optionally calls Voyage reranker. Returns top MaxTasksInContext results.
+// hybridRerank optionally calls Voyage cross-encoder reranker on pre-fused results from repo layer,
+// then returns top MaxTasksInContext results.
+// NOTE: BM25+RRF fusion is already done at the repository level (qdrant/task.go SearchTasks),
+// so we skip the redundant second round here to avoid score distortion.
 func (uc *implUseCase) hybridRerank(ctx context.Context, query string, denseResults []repository.SearchResult) []repository.SearchResult {
 	if len(denseResults) == 0 {
 		return denseResults
 	}
 
-	// Convert to pkgQdrant.ScoredPoint for hybrid search utilities
-	densePoints := make([]pkgQdrant.ScoredPoint, len(denseResults))
-	for i, r := range denseResults {
-		densePoints[i] = pkgQdrant.ScoredPoint{
-			ID:      r.MemoID,
-			Score:   r.Score,
-			Payload: r.Payload,
-		}
-	}
-
-	// Keyword BM25 scoring on the same set
-	keywordPoints := pkgQdrant.ApplyKeywordReranking(query, densePoints)
-
-	// RRF fusion
-	fused := pkgQdrant.ReciprocateRankFusion(densePoints, keywordPoints, 60)
-
-	// Limit to over-fetch candidate pool
+	// Limit candidates to over-fetch pool
 	limit := MaxTasksInContext * overFetchMultiplier
-	if len(fused) < limit {
-		limit = len(fused)
+	if len(denseResults) < limit {
+		limit = len(denseResults)
 	}
-	candidates := fused[:limit]
+	candidates := denseResults[:limit]
 
 	// Optional: Voyage cross-encoder rerank
 	if uc.reranker != nil && len(candidates) > 0 {
 		docs := make([]string, len(candidates))
 		for i, c := range candidates {
-			if payload := c.Payload; payload != nil {
-				if content, ok := payload["content"].(string); ok {
+			if c.Payload != nil {
+				if content, ok := c.Payload["content"].(string); ok {
 					docs[i] = content
 					continue
 				}
 			}
-			docs[i] = c.ID
+			docs[i] = c.MemoID
 		}
 
 		rerankResults, err := uc.reranker.Rerank(ctx, query, docs, MaxTasksInContext)
 		if err != nil {
-			uc.l.Warnf(ctx, "hybridRerank: reranker failed, using RRF order: %v", err)
+			uc.l.Warnf(ctx, "hybridRerank: reranker failed, using original order: %v", err)
 		} else {
-			// Reorder candidates by reranker result
 			reranked := make([]repository.SearchResult, 0, len(rerankResults))
 			for _, rr := range rerankResults {
 				if rr.Index < len(candidates) {
 					c := candidates[rr.Index]
 					reranked = append(reranked, repository.SearchResult{
-						MemoID:  c.ID,
+						MemoID:  c.MemoID,
 						Score:   rr.RelevanceScore,
 						Payload: c.Payload,
 					})
@@ -266,19 +250,10 @@ func (uc *implUseCase) hybridRerank(ctx context.Context, query string, denseResu
 		}
 	}
 
-	// Convert fused results back to SearchResult (top MaxTasksInContext)
+	// No reranker: just return top-K from pre-fused results
 	top := MaxTasksInContext
 	if len(candidates) < top {
 		top = len(candidates)
 	}
-	out := make([]repository.SearchResult, top)
-	for i := range out {
-		c := candidates[i]
-		out[i] = repository.SearchResult{
-			MemoID:  c.ID,
-			Score:   c.RRFScore,
-			Payload: c.Payload,
-		}
-	}
-	return out
+	return candidates[:top]
 }

@@ -23,12 +23,19 @@ func NodeAgent(
 	tools []llmprovider.Tool,
 	systemPrompt string,
 ) error {
+	// Build system prompt with optional time context
+	fullSystemPrompt := systemPrompt
+	if state.TimeContext != "" {
+		fullSystemPrompt = systemPrompt + state.TimeContext
+	}
+
 	req := &llmprovider.Request{
 		SystemInstruction: &llmprovider.Message{
-			Parts: []llmprovider.Part{{Text: systemPrompt}},
+			Parts: []llmprovider.Part{{Text: fullSystemPrompt}},
 		},
-		Messages: state.Messages,
-		Tools:    tools,
+		Messages:    state.Messages,
+		Tools:       tools,
+		Temperature: 0.7, // Higher temperature for natural conversational tone
 	}
 
 	resp, err := llm.GenerateContent(ctx, req)

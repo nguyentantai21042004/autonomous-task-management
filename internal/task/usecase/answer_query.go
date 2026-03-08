@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"autonomous-task-management/internal/model"
@@ -45,18 +46,35 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 		}, nil
 	}
 
-	// Step 2: Build context with truncation
+	// Step 2: Build context with truncation — parallel fetch
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("Ngữ cảnh (Các task liên quan):\n\n")
+
+	// Parallel fetch all tasks from Memos
+	type fetchResult struct {
+		task model.Task
+		err  error
+	}
+	fetched := make([]fetchResult, len(searchResults))
+	var wg sync.WaitGroup
+	for i, sr := range searchResults {
+		wg.Add(1)
+		go func(idx int, memoID string) {
+			defer wg.Done()
+			t, err := uc.repo.GetTask(ctx, memoID)
+			fetched[idx] = fetchResult{task: t, err: err}
+		}(i, sr.MemoID)
+	}
+	wg.Wait()
 
 	sourceTasks := make([]task.SourceTask, 0, len(searchResults))
 	zombieVectors := make([]string, 0) // 🆕 Track zombie vectors for cleanup
 
-	for i, sr := range searchResults {
-		memoTask, err := uc.repo.GetTask(ctx, sr.MemoID)
-		if err != nil {
+	for i, fr := range fetched {
+		sr := searchResults[i]
+		if fr.err != nil {
 			// 🆕 Self-healing: cleanup zombie vectors
-			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+			if strings.Contains(fr.err.Error(), "404") || strings.Contains(fr.err.Error(), "Not Found") {
 				uc.l.Warnf(ctx, "AnswerQuery: Task %s deleted in Memos. Self-healing: removing from Qdrant", sr.MemoID)
 				zombieVectors = append(zombieVectors, sr.MemoID)
 
@@ -73,9 +91,11 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 				continue
 			}
 
-			uc.l.Warnf(ctx, "AnswerQuery: failed to fetch task %s: %v", sr.MemoID, err)
+			uc.l.Warnf(ctx, "AnswerQuery: failed to fetch task %s: %v", sr.MemoID, fr.err)
 			continue
 		}
+
+		memoTask := fr.task
 
 		// Add to source tasks
 		sourceTasks = append(sourceTasks, task.SourceTask{

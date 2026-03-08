@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // Client is the Qdrant HTTP API client.
@@ -18,7 +19,7 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 

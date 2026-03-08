@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 const (
@@ -31,7 +32,7 @@ func New(apiKey string) (*Client, error) {
 		apiKey:     apiKey,
 		baseURL:    DefaultBaseURL,
 		model:      DefaultModel,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 	}, nil
 }
 

@@ -17,9 +17,8 @@ import (
 //   - Goi engine.Run() → engine co the PAUSE lai neu can them user input
 //   - Luu state vao cache (ke ca khi WAITING, de resume sau)
 func (uc *implUseCase) ProcessQuery(ctx context.Context, sc model.Scope, query string) (string, error) {
-	// Inject time context de agent hieu "tuan nay", "ngay mai"
+	// Build time context once per request — injected into system prompt, not user message
 	timeContext := buildTimeContext(uc.timezone)
-	enhancedQuery := query + timeContext
 
 	// Load hoac tao moi GraphState
 	state, ok := uc.stateCache.Get(sc.UserID)
@@ -27,11 +26,14 @@ func (uc *implUseCase) ProcessQuery(ctx context.Context, sc model.Scope, query s
 		state = graph.NewGraphState(sc.UserID)
 	}
 
-	// Append user message vao state
+	// Append original user message (without time context to keep history clean)
 	state.AppendMessage(llmprovider.Message{
 		Role:  "user",
-		Parts: []llmprovider.Part{{Text: enhancedQuery}},
+		Parts: []llmprovider.Part{{Text: query}},
 	})
+
+	// Set time context on state — engine will prepend to system prompt
+	state.TimeContext = timeContext
 
 	// Xu ly theo trang thai hien tai cua graph
 	switch state.Status {
@@ -84,7 +86,10 @@ func (uc *implUseCase) ProcessQuery(ctx context.Context, sc model.Scope, query s
 // isUserConfirmed: kiem tra user co dong y voi dangerous operation khong.
 func isUserConfirmed(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
-	confirmWords := []string{"ok", "yes", "dong y", "xac nhan", "co", "duoc", "chac chan"}
+	confirmWords := []string{
+		"ok", "yes", "dong y", "xac nhan", "co", "duoc", "chac chan",
+		"đồng ý", "xác nhận", "có", "được", "chắc chắn", "ừ", "ờ", "uh huh", "rồi",
+	}
 	for _, word := range confirmWords {
 		if lower == word || strings.HasPrefix(lower, word+" ") {
 			return true

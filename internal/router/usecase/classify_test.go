@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"autonomous-task-management/internal/router"
@@ -209,5 +210,65 @@ func TestClassify_JSONWithCodeBlock(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentCreateTask, output.Intent)
 	assert.Equal(t, 95, output.Confidence)
+	mockLLM.AssertExpectations(t)
+}
+
+// ---------------------------------------------------------------------------
+// Additional coverage: LLM error, plain code block, edge cases
+// ---------------------------------------------------------------------------
+
+func TestClassify_LLMError(t *testing.T) {
+	ctx := context.Background()
+	mockLLM := new(MockLLMManager)
+	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "error", Mode: "development"})
+	uc := New(mockLLM, logger)
+
+	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(nil, errors.New("LLM timeout"))
+
+	_, err := uc.Classify(ctx, "ambiguous message", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "LLM")
+	mockLLM.AssertExpectations(t)
+}
+
+func TestClassify_PlainCodeBlock(t *testing.T) {
+	ctx := context.Background()
+	mockLLM := new(MockLLMManager)
+	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "error", Mode: "development"})
+	uc := New(mockLLM, logger)
+
+	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
+		Content: llmprovider.Message{
+			Parts: []llmprovider.Part{
+				{Text: "```\n{\"intent\":\"SEARCH_TASK\",\"confidence\":80,\"reasoning\":\"Test\"}\n```"},
+			},
+		},
+	}, nil)
+
+	output, err := uc.Classify(ctx, "some ambiguous query", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, router.IntentSearchTask, output.Intent)
+	assert.Equal(t, 80, output.Confidence)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestClassify_EmptyTextInParts(t *testing.T) {
+	ctx := context.Background()
+	mockLLM := new(MockLLMManager)
+	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "error", Mode: "development"})
+	uc := New(mockLLM, logger)
+
+	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
+		Content: llmprovider.Message{
+			Parts: []llmprovider.Part{
+				{Text: ""},
+			},
+		},
+	}, nil)
+
+	output, err := uc.Classify(ctx, "ambiguous message", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, RouterFallbackIntent, output.Intent)
+	assert.Equal(t, RouterFallbackConfidence, output.Confidence)
 	mockLLM.AssertExpectations(t)
 }
