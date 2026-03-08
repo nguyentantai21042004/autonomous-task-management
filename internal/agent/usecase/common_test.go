@@ -33,19 +33,10 @@ type MockTool struct {
 	params      map[string]interface{}
 }
 
-func (m *MockTool) Name() string {
-	return m.name
-}
-
-func (m *MockTool) Description() string {
-	return m.description
-}
-
-func (m *MockTool) Parameters() map[string]interface{} {
-	return m.params
-}
-
-func (m *MockTool) Execute(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+func (m *MockTool) Name() string                    { return m.name }
+func (m *MockTool) Description() string             { return m.description }
+func (m *MockTool) Parameters() map[string]interface{} { return m.params }
+func (m *MockTool) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 	return map[string]string{"result": "success"}, nil
 }
 
@@ -53,18 +44,12 @@ func (m *MockTool) Execute(ctx context.Context, params map[string]interface{}) (
 // TEST HELPERS
 // ============================================================================
 
-// setupTestUseCase creates a new usecase for testing with cleanup
+// setupTestUseCase tao agent UseCase cho testing.
+// V2.0: khong can cleanup goroutine, LRU tu quan ly TTL.
 func setupTestUseCase(t *testing.T) (agent.UseCase, *MockLLMManager, *agent.ToolRegistry) {
+	t.Helper()
 	mockLLM := new(MockLLMManager)
 	registry := agent.NewToolRegistry()
-	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
-	uc := New(mockLLM, registry, logger, "Asia/Ho_Chi_Minh")
-
-	// Cleanup goroutine after test
-	t.Cleanup(func() {
-		uc.(*implUseCase).stopCleanupForTest()
-	})
-
-	return uc, mockLLM, registry
+	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "error", Mode: "development"})
+	return New(mockLLM, registry, logger, "Asia/Ho_Chi_Minh"), mockLLM, registry
 }

@@ -114,6 +114,35 @@ func TestQdrantRepository(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(resp)
 	})
+	// Scroll handler for parallel text search track
+	qdrantMux.HandleFunc("/collections/test_tasks/points/scroll", func(w http.ResponseWriter, r *http.Request) {
+		var req pkgQdrant.ScrollRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		if req.Limit == 99 { // trigger error for error-path test
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		// Return same point as dense search to simulate text match
+		resp := map[string]interface{}{
+			"result": map[string]interface{}{
+				"points": []map[string]interface{}{
+					{
+						"id":    "123e4567-e89b-12d3-a456-426614174000",
+						"score": 0,
+						"payload": map[string]interface{}{
+							"memo_id":  "memos/2",
+							"memo_url": "http://example.com/2",
+							"content":  "Regular Task",
+						},
+					},
+				},
+				"next_page_offset": nil,
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
 	qdrantMux.HandleFunc("/collections/test_tasks/points/delete", func(w http.ResponseWriter, r *http.Request) {
 		var req pkgQdrant.DeletePointsRequest
 		json.NewDecoder(r.Body).Decode(&req)

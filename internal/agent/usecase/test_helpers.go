@@ -1,7 +1,4 @@
 package usecase
 
-// stopCleanupForTest stops the background cleanup goroutine for testing
-// This should only be used in tests to prevent goroutine leaks
-func (uc *implUseCase) stopCleanupForTest() {
-	close(uc.stopCleanup)
-}
+// test_helpers.go: helpers dung trong tests cua package usecase.
+// V2.0: khong con cleanup goroutine (LRU tu quan ly TTL) nen file nay trong.

@@ -58,6 +58,7 @@ func TestMemosRepository(t *testing.T) {
 		}
 	})
 
+	// Handler for resource name "memos/uid-1" → /api/v1/memos/uid-1
 	mux.HandleFunc("/api/v1/memos/uid-1", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch {
 			var req memos.UpdateMemoRequest
@@ -142,7 +143,7 @@ func TestMemosRepository(t *testing.T) {
 	})
 
 	t.Run("GetTask", func(t *testing.T) {
-		task, err := repo.GetTask(ctx, "uid-1")
+		task, err := repo.GetTask(ctx, "memos/uid-1")
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -152,12 +153,12 @@ func TestMemosRepository(t *testing.T) {
 	})
 
 	t.Run("UpdateTask", func(t *testing.T) {
-		err := repo.UpdateTask(ctx, "uid-1", "new content")
+		err := repo.UpdateTask(ctx, "memos/uid-1", "new content")
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
 
-		err = repo.UpdateTask(ctx, "uid-1", "error content")
+		err = repo.UpdateTask(ctx, "memos/uid-1", "error content")
 		if err == nil {
 			t.Errorf("expected update error")
 		}

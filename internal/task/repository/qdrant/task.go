@@ -10,10 +10,14 @@ import (
 
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/internal/task/repository"
+	"autonomous-task-management/pkg/indexer"
 	pkgLog "autonomous-task-management/pkg/log"
 	pkgQdrant "autonomous-task-management/pkg/qdrant"
 	"autonomous-task-management/pkg/voyage"
 )
+
+// tagRegex matches hashtags like #repo/myproject, #pr/123, #issue/456.
+var tagRegex = regexp.MustCompile(`#[a-zA-Z0-9_/]+`)
 
 type implRepository struct {
 	client         *pkgQdrant.Client
@@ -80,7 +84,8 @@ func (r *implRepository) EmbedTask(ctx context.Context, task model.Task) error {
 	return nil
 }
 
-// SearchTasks performs semantic search.
+// SearchTasks performs parallel hybrid search: dense vector + full-text, fused via RRF.
+// Cả 2 tracks chạy song song qua goroutine — giảm latency đáng kể so với sequential.
 func (r *implRepository) SearchTasks(ctx context.Context, opt repository.SearchTasksOptions) ([]repository.SearchResult, error) {
 	// Generate query embedding
 	vectors, err := r.embedder.Embed(ctx, []string{opt.Query})
@@ -90,53 +95,92 @@ func (r *implRepository) SearchTasks(ctx context.Context, opt repository.SearchT
 	}
 	queryVector := vectors[0]
 
-	// Build search request
-	searchReq := pkgQdrant.SearchRequest{
-		Vector:      queryVector,
-		Limit:       opt.Limit,
-		WithPayload: true, // CRITICAL: Need payload to get original memo_id
+	// --- Run dense + text search in parallel ---
+	type trackResult struct {
+		points []pkgQdrant.ScoredPoint
+		err    error
+	}
+	denseCh := make(chan trackResult, 1)
+	textCh := make(chan trackResult, 1)
+
+	// Track 1: Dense vector search
+	go func() {
+		req := pkgQdrant.SearchRequest{
+			Vector:      queryVector,
+			Limit:       opt.Limit,
+			WithPayload: true,
+		}
+		resp, err := r.client.SearchPoints(ctx, r.collectionName, req)
+		if err != nil {
+			denseCh <- trackResult{err: err}
+			return
+		}
+		denseCh <- trackResult{points: resp.Result}
+	}()
+
+	// Track 2: Full-text scroll search using Qdrant text match filter
+	go func() {
+		// Build text match filter: match any word in the query against "content" field.
+		// Requires a text index on "content" field (created once via CreatePayloadIndex).
+		filter := map[string]interface{}{
+			"must": []map[string]interface{}{
+				{
+					"key": "content",
+					"match": map[string]interface{}{
+						"text": opt.Query,
+					},
+				},
+			},
+		}
+		req := pkgQdrant.ScrollRequest{
+			Filter:      filter,
+			Limit:       opt.Limit,
+			WithPayload: true,
+			WithVector:  false,
+		}
+		resp, err := r.client.ScrollPoints(ctx, r.collectionName, req)
+		if err != nil {
+			// Text index may not exist yet — graceful degradation, not a fatal error
+			r.l.Warnf(ctx, "qdrant repository: text search failed (index missing?), skipping: %v", err)
+			textCh <- trackResult{points: nil}
+			return
+		}
+		textCh <- trackResult{points: resp.Result.Points}
+	}()
+
+	denseRes := <-denseCh
+	textRes := <-textCh
+
+	if denseRes.err != nil {
+		r.l.Errorf(ctx, "qdrant repository: dense search failed: %v", denseRes.err)
+		return nil, fmt.Errorf("failed to search: %w", denseRes.err)
 	}
 
-	// Add filters if provided
-	if len(opt.Tags) > 0 {
-		// Implement tag filtering
-	}
+	// RRF fusion of both tracks
+	fused := pkgQdrant.ReciprocateRankFusion(denseRes.points, textRes.points, 60)
 
-	// Search in Qdrant
-	resp, err := r.client.SearchPoints(ctx, r.collectionName, searchReq)
-	if err != nil {
-		r.l.Errorf(ctx, "qdrant repository: failed to search: %v", err)
-		return nil, fmt.Errorf("failed to search: %w", err)
-	}
-
-	// Convert to SearchResult
-	// CRITICAL: Extract memo_id from payload (NOT from Qdrant ID)
-	results := make([]repository.SearchResult, 0, len(resp.Result))
-	for _, scored := range resp.Result {
-		// Safe type assertion with detailed error logging
-		// Get original Memos ID from payload
-		memoIDRaw, exists := scored.Payload["memo_id"]
+	// Convert fused results → SearchResult, extracting memo_id from payload
+	results := make([]repository.SearchResult, 0, len(fused))
+	for _, hr := range fused {
+		memoIDRaw, exists := hr.Payload["memo_id"]
 		if !exists {
-			r.l.Errorf(ctx, "qdrant repository: memo_id missing in payload for point %v, payload: %+v",
-				scored.ID, scored.Payload)
+			r.l.Errorf(ctx, "qdrant repository: memo_id missing in payload for point %v", hr.ID)
 			continue
 		}
-
 		memoID, ok := memoIDRaw.(string)
 		if !ok {
-			r.l.Errorf(ctx, "qdrant repository: memo_id type assertion failed for point %v, got type %T, value: %v",
-				scored.ID, memoIDRaw, memoIDRaw)
+			r.l.Errorf(ctx, "qdrant repository: memo_id type assertion failed for point %v", hr.ID)
 			continue
 		}
-
 		results = append(results, repository.SearchResult{
-			MemoID:  memoID, // Use original Memos ID, not Qdrant UUID
-			Score:   scored.Score,
-			Payload: scored.Payload,
+			MemoID:  memoID,
+			Score:   hr.RRFScore,
+			Payload: hr.Payload,
 		})
 	}
 
-	r.l.Infof(ctx, "qdrant repository: found %d results for query %q", len(results), opt.Query)
+	r.l.Infof(ctx, "qdrant repository: hybrid search found %d results (dense=%d, text=%d) for query %q",
+		len(results), len(denseRes.points), len(textRes.points), opt.Query)
 	return results, nil
 }
 
@@ -217,82 +261,12 @@ func memoIDToUUID(memoID string) string {
 	return uuid.NewSHA1(namespace, []byte(memoID)).String()
 }
 
-// buildEmbeddingText constructs optimized text for embedding from task.
-// OPTIMIZATION: Embed only title + tags + summary, NOT full content.
-// Full content dilutes semantic density and reduces search accuracy.
+// buildEmbeddingText constructs enriched text for embedding from task.
+// V2.0: Dung Contextual Enrichment thay vi chi embed title+tags.
+// Ket qua: vector capture duoc "tuan nay", "ngay mai", "qua han" →
+// query "deadline tuan nay" match chinh xac hon.
 func buildEmbeddingText(task model.Task) string {
-	var parts []string
-
-	// NITPICK FIX: Strip markdown code blocks first
-	// Prevents code snippets from polluting semantic content
-	content := stripMarkdownCodeBlocks(task.Content)
-
-	// Extract title (first non-empty line, remove markdown)
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "#") {
-			// Remove markdown formatting
-			title := strings.ReplaceAll(line, "**", "")
-			title = strings.ReplaceAll(title, "*", "")
-			parts = append(parts, title)
-			break
-		}
-	}
-
-	// Extract tags (lines starting with #)
-	var tags []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "#") {
-			tags = append(tags, line)
-		}
-	}
-	if len(tags) > 0 {
-		parts = append(parts, strings.Join(tags, " "))
-	}
-
-	// Extract first 2-3 sentences as summary (skip title line)
-	var summaryLines []string
-	skipFirst := true
-	sentenceCount := 0
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if skipFirst {
-			skipFirst = false
-			continue
-		}
-		summaryLines = append(summaryLines, line)
-		// Count sentences (rough approximation)
-		sentenceCount += strings.Count(line, ".") + strings.Count(line, "!") + strings.Count(line, "?")
-		if sentenceCount >= 2 {
-			break
-		}
-	}
-	if len(summaryLines) > 0 {
-		parts = append(parts, strings.Join(summaryLines, " "))
-	}
-
-	// Combine: title + tags + summary
-	result := strings.Join(parts, "\n")
-
-	// Limit to 1000 chars to avoid embedding API limits
-	if len(result) > 1000 {
-		result = result[:1000]
-	}
-
-	return result
-}
-
-// stripMarkdownCodeBlocks removes code blocks (```...```) from text.
-// NITPICK FIX: Prevents code snippets from polluting embeddings.
-func stripMarkdownCodeBlocks(text string) string {
-	// Remove code blocks: ```language\n...\n``` or ```\n...\n```
-	re := regexp.MustCompile("(?s)```[a-z]*\\n.*?\\n```")
-	return re.ReplaceAllString(text, "")
+	return indexer.EnrichTaskContent(task.Content, task.Tags, "Asia/Ho_Chi_Minh")
 }
 
 // extractTags extracts hashtags from markdown content.
@@ -304,8 +278,7 @@ func extractTags(content string) []string {
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		re := regexp.MustCompile(`#[a-zA-Z0-9_/]+`)
-		matches := re.FindAllString(line, -1)
+		matches := tagRegex.FindAllString(line, -1)
 
 		for _, tag := range matches {
 			if !seen[tag] {

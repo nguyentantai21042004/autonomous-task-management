@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	MaxTasksInContext = 5   // Top-5 most relevant tasks
-	MaxCharsPerTask   = 800 // Truncate each task to 800 chars
+	MaxTasksInContext   = 5   // Top-5 most relevant tasks delivered to LLM
+	MaxCharsPerTask     = 800 // Truncate each task to 800 chars
+	overFetchMultiplier = 8   // Over-fetch 8x: wider dense pool → BM25 miss rate giảm đáng kể
 )
 
 // AnswerQuery uses RAG to answer questions about tasks.
@@ -25,14 +26,17 @@ func (uc *implUseCase) AnswerQuery(ctx context.Context, sc model.Scope, input ta
 
 	uc.l.Infof(ctx, "AnswerQuery: user=%s query=%q", sc.UserID, input.Query)
 
-	// Step 1: Search for relevant tasks
-	searchResults, err := uc.vectorRepo.SearchTasks(ctx, repository.SearchTasksOptions{
+	// Step 1: Hybrid search — over-fetch dense, apply keyword BM25, RRF fusion, optional rerank
+	overFetchLimit := MaxTasksInContext * overFetchMultiplier
+	denseResults, err := uc.vectorRepo.SearchTasks(ctx, repository.SearchTasksOptions{
 		Query: input.Query,
-		Limit: MaxTasksInContext,
+		Limit: overFetchLimit,
 	})
 	if err != nil {
 		return task.QueryOutput{}, fmt.Errorf("failed to search tasks: %w", err)
 	}
+
+	searchResults := uc.hybridRerank(ctx, input.Query, denseResults)
 
 	if len(searchResults) == 0 {
 		return task.QueryOutput{

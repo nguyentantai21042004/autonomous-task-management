@@ -1,86 +1,26 @@
 package usecase
 
 import (
-	"context"
-	"time"
-
-	"autonomous-task-management/internal/agent"
 	"autonomous-task-management/pkg/llmprovider"
 )
 
-// ClearSession removes conversation history for a user
+// ClearSession xoa GraphState cua user khoi cache.
+// LRU tu dong quan ly TTL — khong can cleanup goroutine thu cong.
 func (uc *implUseCase) ClearSession(userID string) {
-	uc.cacheMutex.Lock()
-	defer uc.cacheMutex.Unlock()
-	delete(uc.sessionCache, userID)
+	uc.stateCache.Remove(userID)
 }
 
-// GetSessionMessages retrieves the conversation history for a user
+// GetSessionMessages tra ve lich su hoi thoai cua user tu GraphState.
+// Tra ve nil neu chua co session.
 func (uc *implUseCase) GetSessionMessages(userID string) []llmprovider.Message {
-	uc.cacheMutex.RLock()
-	defer uc.cacheMutex.RUnlock()
-
-	session, exists := uc.sessionCache[userID]
-	if !exists {
+	state, ok := uc.stateCache.Get(userID)
+	if !ok {
 		return nil
 	}
-	return session.Messages
+	return state.Messages
 }
 
-// getSession retrieves or creates session for user
-func (uc *implUseCase) getSession(userID string) *agent.SessionMemory {
-	uc.cacheMutex.Lock()
-	defer uc.cacheMutex.Unlock()
-
-	session, exists := uc.sessionCache[userID]
-	if !exists || time.Since(session.LastUpdated) > uc.cacheTTL {
-		session = &agent.SessionMemory{
-			UserID:      userID,
-			Messages:    []llmprovider.Message{},
-			LastUpdated: time.Now(),
-		}
-		uc.sessionCache[userID] = session
-	}
-
-	return session
-}
-
-// cleanupExpiredSessions runs periodically to remove expired sessions
-func (uc *implUseCase) cleanupExpiredSessions() {
-	ticker := time.NewTicker(SessionCleanupInterval * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			uc.cacheMutex.Lock()
-
-			now := time.Now()
-			expiredKeys := make([]string, 0)
-
-			for userID, session := range uc.sessionCache {
-				if now.Sub(session.LastUpdated) > uc.cacheTTL {
-					expiredKeys = append(expiredKeys, userID)
-				}
-			}
-
-			for _, userID := range expiredKeys {
-				delete(uc.sessionCache, userID)
-			}
-
-			uc.cacheMutex.Unlock()
-
-			if len(expiredKeys) > 0 {
-				uc.l.Infof(context.Background(),
-					"%s: "+LogMsgSessionsCleanedUp, LogPrefixCleanupSessions, len(expiredKeys))
-			}
-		case <-uc.stopCleanup:
-			return
-		}
-	}
-}
-
-// convertToolsToNormalized converts tool registry to normalized llmprovider.Tool format
+// convertToolsToNormalized chuyen tool registry sang format llmprovider.Tool.
 func (uc *implUseCase) convertToolsToNormalized() []llmprovider.Tool {
 	return uc.registry.ToFunctionDefinitions()
 }

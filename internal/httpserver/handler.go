@@ -73,6 +73,7 @@ func (srv *HTTPServer) setupTaskDomain() {
 		srv.memosRepo,
 		srv.vectorRepo,
 		srv.dateMathParser,
+		nil, // reranker: optional, wired externally via srv.reranker if configured
 		srv.cfg.LLM.Timezone,
 		srv.cfg.Memos.ExternalURL,
 	)

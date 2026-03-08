@@ -49,3 +49,29 @@ type ScoredPoint struct {
 type DeletePointsRequest struct {
 	Points []string `json:"points"`
 }
+
+// ScrollRequest fetches points by payload filter (used for keyword/text search).
+type ScrollRequest struct {
+	Filter      map[string]interface{} `json:"filter,omitempty"`
+	Limit       int                    `json:"limit"`
+	WithPayload bool                   `json:"with_payload"`
+	WithVector  bool                   `json:"with_vector"`
+}
+
+// ScrollResponse contains paginated scroll results.
+// Qdrant scroll API returns result as an object with "points" array.
+type ScrollResponse struct {
+	Result ScrollResult `json:"result"`
+}
+
+// ScrollResult is the inner result object of a scroll response.
+type ScrollResult struct {
+	Points         []ScoredPoint `json:"points"`
+	NextPageOffset interface{}   `json:"next_page_offset"`
+}
+
+// CreatePayloadIndexRequest creates an index on a payload field.
+type CreatePayloadIndexRequest struct {
+	FieldName   string `json:"field_name"`
+	FieldSchema string `json:"field_schema"` // "text", "keyword", "integer", etc.
+}

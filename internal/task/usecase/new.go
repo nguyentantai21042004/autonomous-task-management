@@ -6,6 +6,7 @@ import (
 	"autonomous-task-management/pkg/datemath"
 	"autonomous-task-management/pkg/llmprovider"
 	pkgLog "autonomous-task-management/pkg/log"
+	"autonomous-task-management/pkg/voyage"
 )
 
 type implUseCase struct {
@@ -15,11 +16,13 @@ type implUseCase struct {
 	repo       repository.MemosRepository
 	vectorRepo repository.VectorRepository
 	dateMath   datemath.IParser
+	reranker   *voyage.Reranker // optional; nil = skip reranking
 	timezone   string
 	memosURL   string
 }
 
 // New creates a new task UseCase instance.
+// reranker is optional — pass nil to disable cross-encoder reranking.
 func New(
 	l pkgLog.Logger,
 	llm llmprovider.IManager,
@@ -27,6 +30,7 @@ func New(
 	repo repository.MemosRepository,
 	vectorRepo repository.VectorRepository,
 	dateMath datemath.IParser,
+	reranker *voyage.Reranker,
 	timezone string,
 	memosURL string,
 ) task.UseCase {
@@ -37,6 +41,7 @@ func New(
 		repo:       repo,
 		vectorRepo: vectorRepo,
 		dateMath:   dateMath,
+		reranker:   reranker,
 		timezone:   timezone,
 		memosURL:   memosURL,
 	}

@@ -111,6 +111,68 @@ func (c *Client) SearchPoints(ctx context.Context, collectionName string, req Se
 	return &result, nil
 }
 
+// ScrollPoints fetches points matching a payload filter (no vector needed).
+// Used for full-text keyword search when a text index exists on the field.
+func (c *Client) ScrollPoints(ctx context.Context, collectionName string, req ScrollRequest) (*ScrollResponse, error) {
+	url := fmt.Sprintf("%s/collections/%s/points/scroll", c.baseURL, collectionName)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call qdrant API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("qdrant API error: %d", resp.StatusCode)
+	}
+
+	var result ScrollResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// CreatePayloadIndex creates an index on a payload field to enable fast filtering/text search.
+func (c *Client) CreatePayloadIndex(ctx context.Context, collectionName string, req CreatePayloadIndexRequest) error {
+	url := fmt.Sprintf("%s/collections/%s/index", c.baseURL, collectionName)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to call qdrant API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("qdrant API error: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // DeletePoints deletes points by IDs.
 func (c *Client) DeletePoints(ctx context.Context, collectionName string, ids []string) error {
 	url := fmt.Sprintf("%s/collections/%s/points/delete", c.baseURL, collectionName)

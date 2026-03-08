@@ -2,114 +2,106 @@ package usecase
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"strings"
 
+	"autonomous-task-management/internal/agent/graph"
 	"autonomous-task-management/internal/model"
 	"autonomous-task-management/pkg/llmprovider"
 )
 
+// ProcessQuery xu ly natural language query bang Graph Engine.
+//
+// So voi V1.2 (for loop bi reset sau moi tin nhan), V2.0:
+//   - Load GraphState tu LRU cache → co the resume tu giua chung
+//   - Neu State = WAITING_FOR_HUMAN → xu ly confirm / cancel / resume
+//   - Goi engine.Run() → engine co the PAUSE lai neu can them user input
+//   - Luu state vao cache (ke ca khi WAITING, de resume sau)
 func (uc *implUseCase) ProcessQuery(ctx context.Context, sc model.Scope, query string) (string, error) {
-	// Inject time context into query
+	// Inject time context de agent hieu "tuan nay", "ngay mai"
 	timeContext := buildTimeContext(uc.timezone)
 	enhancedQuery := query + timeContext
 
-	session := uc.getSession(sc.UserID)
+	// Load hoac tao moi GraphState
+	state, ok := uc.stateCache.Get(sc.UserID)
+	if !ok || state.IsExpired() {
+		state = graph.NewGraphState(sc.UserID)
+	}
 
-	// Build current user message with enhanced query
-	userMessage := llmprovider.Message{
+	// Append user message vao state
+	state.AppendMessage(llmprovider.Message{
 		Role:  "user",
 		Parts: []llmprovider.Part{{Text: enhancedQuery}},
-	}
+	})
 
-	// Create request with history
-	messages := make([]llmprovider.Message, 0, len(session.Messages)+1)
-	messages = append(messages, session.Messages...)
-	messages = append(messages, userMessage)
-
-	req := llmprovider.Request{
-		SystemInstruction: &llmprovider.Message{
-			Parts: []llmprovider.Part{{Text: SystemPromptAgent}},
-		},
-		Messages: messages,
-		Tools:    uc.convertToolsToNormalized(),
-	}
-
-	for step := 0; step < MaxAgentSteps; step++ {
-		uc.l.Infof(ctx, "%s: "+LogMsgAgentStep, LogPrefixProcessQuery, step+1, MaxAgentSteps)
-
-		// 1. Reason: Ask LLM what to do
-		resp, err := uc.llm.GenerateContent(ctx, &req)
-		if err != nil {
-			return "", fmt.Errorf("%s: "+ErrMsgAgentLLMError+": %w", LogPrefixProcessQuery, step, err)
-		}
-
-		if len(resp.Content.Parts) == 0 {
-			return "", fmt.Errorf("%s: %s", LogPrefixProcessQuery, ErrMsgEmptyLLMResponse)
-		}
-
-		part := resp.Content.Parts[0]
-
-		// 2. Check if LLM wants to call a tool
-		if part.FunctionCall == nil {
-			// LLM has final answer
-			uc.l.Infof(ctx, "%s: "+LogMsgAgentFinished, LogPrefixProcessQuery, step+1)
-
-			// Save to session history
-			uc.cacheMutex.Lock()
-			session.Messages = append(session.Messages, userMessage)
-			session.Messages = append(session.Messages, llmprovider.Message{
-				Role:  "assistant",
-				Parts: []llmprovider.Part{{Text: part.Text}},
-			})
-
-			// Limit history to last N messages
-			if len(session.Messages) > MaxSessionHistory {
-				session.Messages = session.Messages[len(session.Messages)-MaxSessionHistory:]
-			}
-			session.LastUpdated = time.Now()
-			uc.cacheMutex.Unlock()
-
-			return part.Text, nil
-		}
-
-		// 3. Act: Execute the tool
-		toolName := part.FunctionCall.Name
-		uc.l.Infof(ctx, "%s: "+LogMsgAgentCallingTool, LogPrefixProcessQuery, toolName, part.FunctionCall.Args)
-
-		tool, ok := uc.registry.Get(toolName)
-		var toolResult interface{}
-
-		if !ok {
-			uc.l.Errorf(ctx, "%s: Tool %s not found", LogPrefixProcessQuery, toolName)
-			toolResult = map[string]string{"error": ErrMsgToolNotFound}
-		} else {
-			// Execute tool
-			res, err := tool.Execute(ctx, part.FunctionCall.Args)
-			if err != nil {
-				uc.l.Errorf(ctx, "%s: "+LogMsgToolExecutionError, LogPrefixProcessQuery, toolName, err)
-				toolResult = map[string]string{"error": err.Error()}
+	// Xu ly theo trang thai hien tai cua graph
+	switch state.Status {
+	case graph.StatusWaitingForHuman:
+		if state.PendingTool != nil {
+			// Dangerous operation dang cho confirm
+			if isUserConfirmed(query) {
+				// User dong y → chay tiep tool
+				state.Status = graph.StatusRunning
 			} else {
-				toolResult = res
+				// User tu choi → huy bo
+				state.Status = graph.StatusFinished
+				state.PendingTool = nil
+				state.Touch()
+				uc.stateCache.Add(sc.UserID, state)
+				return "Da huy thao tac.", nil
 			}
+		} else {
+			// LLM da hoi user → gio co answer → tiep tuc reason
+			state.Status = graph.StatusRunning
 		}
-
-		// 4. Observe: Add tool result to current ReAct session memory
-		req.Messages = append(req.Messages, llmprovider.Message{
-			Role:  "assistant",
-			Parts: []llmprovider.Part{{FunctionCall: part.FunctionCall}},
-		})
-		req.Messages = append(req.Messages, llmprovider.Message{
-			Role: "function",
-			Parts: []llmprovider.Part{{
-				FunctionResponse: &llmprovider.FunctionResponse{
-					Name:     toolName,
-					Response: toolResult,
-				},
-			}},
-		})
+	default:
+		// Tin nhan moi hoac FINISHED/ERROR → bat dau tu dau
+		state.Status = graph.StatusRunning
+		state.CurrentStep = 0
 	}
 
-	uc.l.Warnf(ctx, "%s: "+LogMsgAgentMaxSteps, LogPrefixProcessQuery, MaxAgentSteps)
-	return ErrMsgMaxStepsExceeded, nil
+	// Chay Graph Engine
+	if err := uc.engine.Run(ctx, state); err != nil {
+		return "", err
+	}
+
+	// Context compression: giam token cost khi history dai
+	state.CompressIfNeeded()
+	state.TrimHistory()
+	state.Touch()
+
+	// Luu state lai (ke ca khi WAITING_FOR_HUMAN de resume sau)
+	uc.stateCache.Add(sc.UserID, state)
+
+	response := uc.engine.GetLastResponse(state)
+	if response == "" && state.Status == graph.StatusWaitingForHuman {
+		// Engine dung de hoi user, lay message assistant cuoi trong messages
+		response = getLastAssistantMessage(state)
+	}
+
+	return response, nil
+}
+
+// isUserConfirmed: kiem tra user co dong y voi dangerous operation khong.
+func isUserConfirmed(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	confirmWords := []string{"ok", "yes", "dong y", "xac nhan", "co", "duoc", "chac chan"}
+	for _, word := range confirmWords {
+		if lower == word || strings.HasPrefix(lower, word+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// getLastAssistantMessage lay text tu message assistant cuoi trong state.Messages.
+func getLastAssistantMessage(state *graph.GraphState) string {
+	for i := len(state.Messages) - 1; i >= 0; i-- {
+		msg := state.Messages[i]
+		if msg.Role == "assistant" && len(msg.Parts) > 0 {
+			if msg.Parts[0].Text != "" {
+				return msg.Parts[0].Text
+			}
+		}
+	}
+	return ErrMsgMaxStepsExceeded
 }

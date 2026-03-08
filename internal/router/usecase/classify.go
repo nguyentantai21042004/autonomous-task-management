@@ -11,7 +11,13 @@ import (
 )
 
 func (uc *implUseCase) Classify(ctx context.Context, message string, conversationHistory []string) (router.RouterOutput, error) {
-	// Build prompt with conversation history
+	// Fast path: rule-based classifier — bỏ qua LLM nếu đủ tự tin
+	if result, confident := classifyByRules(message); confident {
+		uc.l.Infof(ctx, "%s: rule-based → %s (confidence: %d%%)", LogPrefixClassify, result.Intent, result.Confidence)
+		return result, nil
+	}
+
+	// Slow path: LLM fallback cho ambiguous messages
 	historyContext := ""
 	if len(conversationHistory) > 0 {
 		historyContext = PromptHistoryPrefix

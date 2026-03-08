@@ -59,9 +59,9 @@ func (c *Client) CreateMemo(ctx context.Context, req CreateMemoRequest) (*Memo, 
 	return &memo, nil
 }
 
-// UpdateMemo updates an existing memo via PATCH /api/v1/memos/{id}.
-func (c *Client) UpdateMemo(ctx context.Context, id string, req UpdateMemoRequest) (*Memo, error) {
-	url := fmt.Sprintf("%s/api/v1/memos/%s", c.baseURL, id)
+// UpdateMemo updates an existing memo via PATCH /api/v1/{name}.
+func (c *Client) UpdateMemo(ctx context.Context, name string, req UpdateMemoRequest) (*Memo, error) {
+	url := fmt.Sprintf("%s/api/v1/%s", c.baseURL, name)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -93,9 +93,9 @@ func (c *Client) UpdateMemo(ctx context.Context, id string, req UpdateMemoReques
 	return &memo, nil
 }
 
-// GetMemo fetches a single memo by its ID.
-func (c *Client) GetMemo(ctx context.Context, id string) (*Memo, error) {
-	url := fmt.Sprintf("%s/api/v1/memos/%s", c.baseURL, id)
+// GetMemo fetches a single memo by its resource name (e.g. "memos/{uid}").
+func (c *Client) GetMemo(ctx context.Context, name string) (*Memo, error) {
+	url := fmt.Sprintf("%s/api/v1/%s", c.baseURL, name)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -162,7 +162,7 @@ type CreateMemoRequest struct {
 	Visibility string `json:"visibility"`
 }
 
-// UpdateMemoRequest is the body for PATCH /api/v1/memos/{id}.
+// UpdateMemoRequest is the body for PATCH /api/v1/{name}.
 type UpdateMemoRequest struct {
 	Content    string `json:"content"`
 	UpdateMask string `json:"updateMask"`

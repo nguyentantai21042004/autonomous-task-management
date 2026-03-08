@@ -74,6 +74,23 @@ func TestQdrantClient(t *testing.T) {
 			return
 		}
 
+		if r.Method == http.MethodPost && strings.Contains(path, "/points/scroll") {
+			var req qdrant.ScrollRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			if req.Limit == 999 {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"result":{"points":[{"id":"abc","score":0,"payload":{"content":"test"}}],"next_page_offset":null}}`))
+			return
+		}
+
+		if r.Method == http.MethodPut && strings.Contains(path, "/index") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer ts.Close()
@@ -154,6 +171,36 @@ func TestQdrantClient(t *testing.T) {
 		}
 	})
 
+	t.Run("ScrollPoints Success", func(t *testing.T) {
+		resp, err := client.ScrollPoints(context.Background(), "test_col", qdrant.ScrollRequest{
+			Limit:       10,
+			WithPayload: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Result.Points) != 1 || resp.Result.Points[0].ID != "abc" {
+			t.Errorf("unexpected scroll result: %+v", resp.Result.Points)
+		}
+	})
+
+	t.Run("ScrollPoints Error", func(t *testing.T) {
+		_, err := client.ScrollPoints(context.Background(), "test_col", qdrant.ScrollRequest{Limit: 999})
+		if err == nil {
+			t.Fatalf("expected error from 500 response")
+		}
+	})
+
+	t.Run("CreatePayloadIndex Success", func(t *testing.T) {
+		err := client.CreatePayloadIndex(context.Background(), "test_col", qdrant.CreatePayloadIndexRequest{
+			FieldName:   "content",
+			FieldSchema: "text",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("Context Cancelation Error", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel immediately
@@ -168,4 +215,67 @@ func TestQdrantClient(t *testing.T) {
 			t.Errorf("expected error on canceled context")
 		}
 	})
+}
+
+// TestScrollResponse_NestedResultFormat verifies that ScrollPoints correctly
+// parses Qdrant's actual response format where result is an object with "points" array,
+// not a flat array. This was BUG #2.
+func TestScrollResponse_NestedResultFormat(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Qdrant's actual scroll response format
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+			"result": {
+				"points": [
+					{"id": "point-1", "payload": {"memo_id": "memos/1", "content": "task 1"}},
+					{"id": "point-2", "payload": {"memo_id": "memos/2", "content": "task 2"}}
+				],
+				"next_page_offset": "point-2"
+			},
+			"status": "ok",
+			"time": 0.001
+		}`))
+	}))
+	defer ts.Close()
+
+	client := qdrant.NewClient(ts.URL)
+	resp, err := client.ScrollPoints(context.Background(), "test_col", qdrant.ScrollRequest{
+		Limit:       10,
+		WithPayload: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Result.Points) != 2 {
+		t.Fatalf("expected 2 points, got %d", len(resp.Result.Points))
+	}
+	if resp.Result.Points[0].ID != "point-1" {
+		t.Errorf("unexpected first point ID: %s", resp.Result.Points[0].ID)
+	}
+	if resp.Result.Points[1].ID != "point-2" {
+		t.Errorf("unexpected second point ID: %s", resp.Result.Points[1].ID)
+	}
+}
+
+// TestScrollResponse_EmptyPoints verifies proper handling when scroll returns no results.
+func TestScrollResponse_EmptyPoints(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"result": {"points": [], "next_page_offset": null}}`))
+	}))
+	defer ts.Close()
+
+	client := qdrant.NewClient(ts.URL)
+	resp, err := client.ScrollPoints(context.Background(), "test_col", qdrant.ScrollRequest{
+		Limit:       10,
+		WithPayload: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Result.Points) != 0 {
+		t.Errorf("expected 0 points, got %d", len(resp.Result.Points))
+	}
 }

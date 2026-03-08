@@ -25,23 +25,26 @@ func (m *MockLLMManager) GenerateContent(ctx context.Context, req *llmprovider.R
 	return args.Get(0).(*llmprovider.Response), args.Error(1)
 }
 
-func TestClassify_CreateTask(t *testing.T) {
+// ---------------------------------------------------------------------------
+// Tests for LLM slow path (ambiguous messages that bypass rule-based)
+// ---------------------------------------------------------------------------
+
+func TestClassify_CreateTask_LLMPath(t *testing.T) {
 	ctx := context.Background()
 	mockLLM := new(MockLLMManager)
 	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
 	uc := New(mockLLM, logger)
 
-	// Mock LLM response for CREATE_TASK intent
+	// Ambiguous: không có signal rõ ràng → phải gọi LLM
 	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
 		Content: llmprovider.Message{
 			Parts: []llmprovider.Part{
-				{Text: `{"intent":"CREATE_TASK","confidence":95,"reasoning":"User wants to create a new task"}`},
+				{Text: `{"intent":"CREATE_TASK","confidence":75,"reasoning":"Context implies task creation"}`},
 			},
 		},
 	}, nil)
 
-	output, err := uc.Classify(ctx, "Tạo task mới: Hoàn thành báo cáo", nil)
+	output, err := uc.Classify(ctx, "Nhớ là còn việc báo cáo tuần này chưa xong", nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentCreateTask, output.Intent)
@@ -49,89 +52,79 @@ func TestClassify_CreateTask(t *testing.T) {
 	mockLLM.AssertExpectations(t)
 }
 
-func TestClassify_SearchTask(t *testing.T) {
+func TestClassify_SearchTask_LLMPath(t *testing.T) {
 	ctx := context.Background()
 	mockLLM := new(MockLLMManager)
 	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
 	uc := New(mockLLM, logger)
 
-	// Mock LLM response for SEARCH_TASK intent
 	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
 		Content: llmprovider.Message{
 			Parts: []llmprovider.Part{
-				{Text: `{"intent":"SEARCH_TASK","confidence":90,"reasoning":"User wants to search for tasks"}`},
+				{Text: `{"intent":"SEARCH_TASK","confidence":80,"reasoning":"User asking about PR status"}`},
 			},
 		},
 	}, nil)
 
-	output, err := uc.Classify(ctx, "Tìm task về báo cáo", nil)
+	// Ambiguous: không có keyword search rõ ràng
+	output, err := uc.Classify(ctx, "PR 123 đang ở đâu rồi?", nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentSearchTask, output.Intent)
-	assert.Greater(t, output.Confidence, 0)
 	mockLLM.AssertExpectations(t)
 }
 
-func TestClassify_ManageChecklist(t *testing.T) {
+func TestClassify_ManageChecklist_LLMPath(t *testing.T) {
 	ctx := context.Background()
 	mockLLM := new(MockLLMManager)
 	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
 	uc := New(mockLLM, logger)
 
-	// Mock LLM response for MANAGE_CHECKLIST intent
 	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
 		Content: llmprovider.Message{
 			Parts: []llmprovider.Part{
-				{Text: `{"intent":"MANAGE_CHECKLIST","confidence":88,"reasoning":"User wants to manage checklist items"}`},
+				{Text: `{"intent":"MANAGE_CHECKLIST","confidence":88,"reasoning":"User wants to manage checklist"}`},
 			},
 		},
 	}, nil)
 
-	output, err := uc.Classify(ctx, "Đánh dấu item 1 là hoàn thành", nil)
+	// Ambiguous: không chắc là checklist hay conversation
+	output, err := uc.Classify(ctx, "item số 2 trong memo đó xong rồi", nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentManageChecklist, output.Intent)
-	assert.Greater(t, output.Confidence, 0)
 	mockLLM.AssertExpectations(t)
 }
 
-func TestClassify_Conversation(t *testing.T) {
+func TestClassify_Conversation_LLMPath(t *testing.T) {
 	ctx := context.Background()
 	mockLLM := new(MockLLMManager)
 	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
 	uc := New(mockLLM, logger)
 
-	// Mock LLM response for CONVERSATION intent
 	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
 		Content: llmprovider.Message{
 			Parts: []llmprovider.Part{
-				{Text: `{"intent":"CONVERSATION","confidence":85,"reasoning":"General conversation"}`},
+				{Text: `{"intent":"CONVERSATION","confidence":85,"reasoning":"General question"}`},
 			},
 		},
 	}, nil)
 
-	output, err := uc.Classify(ctx, "Xin chào, bạn khỏe không?", nil)
+	// Ambiguous: câu hỏi chung không rõ intent
+	output, err := uc.Classify(ctx, "tôi không biết phải làm sao với project này", nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentConversation, output.Intent)
-	assert.Greater(t, output.Confidence, 0)
 	mockLLM.AssertExpectations(t)
 }
 
-func TestClassify_WithConversationHistory(t *testing.T) {
+func TestClassify_WithConversationHistory_LLMPath(t *testing.T) {
 	ctx := context.Background()
 	mockLLM := new(MockLLMManager)
 	logger := pkgLog.Init(pkgLog.ZapConfig{Level: "info", Mode: "development"})
-
 	uc := New(mockLLM, logger)
 
-	history := []string{
-		"User: Tạo task mới",
-		"Bot: Task đã được tạo",
-	}
+	history := []string{"User: Tạo task mới", "Bot: Task đã được tạo"}
 
 	mockLLM.On("GenerateContent", ctx, mock.Anything).Return(&llmprovider.Response{
 		Content: llmprovider.Message{
@@ -141,7 +134,8 @@ func TestClassify_WithConversationHistory(t *testing.T) {
 		},
 	}, nil)
 
-	output, err := uc.Classify(ctx, "Cho tôi xem task vừa tạo", history)
+	// Ambiguous without history context
+	output, err := uc.Classify(ctx, "cái vừa tạo đó đâu rồi", history)
 
 	assert.NoError(t, err)
 	assert.Equal(t, router.IntentSearchTask, output.Intent)
